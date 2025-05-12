@@ -1,0 +1,21 @@
+[package]
+name = "omikuji"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Configuration and CLI
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+clap = { version = "4.4", features = ["derive"] }
+validator = { version = "0.16", features = ["derive"] }
+thiserror = "1.0"
+anyhow = "1.0"
+dirs = "5.0"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
