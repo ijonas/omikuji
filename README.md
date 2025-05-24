@@ -55,8 +55,8 @@ datafeeds:
 
 ```bash
 # Run with default configuration (~/.omikuji/config.yaml)
-cargo run
+omikuji
 
 # Run with specified configuration file
-cargo run -- -c config.yaml
+omikuji -c config.yaml
 ```
