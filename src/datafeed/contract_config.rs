@@ -3,8 +3,8 @@ use ethers::prelude::*;
 use std::sync::Arc;
 use tracing::info;
 
-use crate::contracts::flux_aggregator::IFluxAggregator;
 use crate::network::NetworkManager;
+use super::contract_utils::{parse_address, create_contract_with_provider};
 
 /// Configuration values read from a FluxAggregator contract
 #[derive(Debug, Clone)]
@@ -44,9 +44,7 @@ impl<'a> ContractConfigReader<'a> {
         );
         
         // Parse the contract address
-        let address = contract_address
-            .parse::<Address>()
-            .with_context(|| format!("Invalid contract address: {}", contract_address))?;
+        let address = parse_address(contract_address)?;
         
         // Get provider for the network
         let provider = self.network_manager
@@ -54,7 +52,7 @@ impl<'a> ContractConfigReader<'a> {
             .with_context(|| format!("Failed to get provider for network: {}", network_name))?;
         
         // Create contract instance
-        let contract = IFluxAggregator::new(address, provider);
+        let contract = create_contract_with_provider(address, provider);
         
         // Read decimals
         let decimals = contract

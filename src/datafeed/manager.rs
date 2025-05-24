@@ -122,7 +122,11 @@ impl FeedManager {
     
     /// Spawns a monitor task for a single datafeed
     fn spawn_monitor(&self, datafeed: Datafeed) -> JoinHandle<()> {
-        let monitor = FeedMonitor::new(datafeed.clone(), Arc::clone(&self.fetcher));
+        let monitor = FeedMonitor::new(
+            datafeed.clone(), 
+            Arc::clone(&self.fetcher),
+            Arc::clone(&self.network_manager)
+        );
         let feed_name = datafeed.name.clone();
         
         tokio::spawn(async move {
