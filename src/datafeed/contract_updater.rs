@@ -1,13 +1,16 @@
 use anyhow::{Context, Result};
 use ethers::prelude::*;
+use ethers::signers::LocalWallet;
 use std::sync::Arc;
 use tracing::{info, error, debug};
 
 use crate::network::NetworkManager;
 use crate::config::models::Datafeed;
+use crate::contracts::flux_aggregator::IFluxAggregator;
 use super::contract_utils::{
     parse_address, create_contract_with_provider, create_contract_with_signer,
-    scale_value_for_contract, validate_value_bounds, current_timestamp, errors
+    scale_value_for_contract, validate_value_bounds, current_timestamp, 
+    calculate_deviation_percentage, errors
 };
 
 /// Handles contract updates based on time and deviation thresholds
@@ -21,18 +24,31 @@ impl<'a> ContractUpdater<'a> {
         Self { network_manager }
     }
     
+    /// Gets a contract instance with provider for read operations
+    async fn get_contract_for_read(&self, datafeed: &Datafeed) -> Result<IFluxAggregator<Provider<Http>>> {
+        let provider = self.network_manager
+            .get_provider(&datafeed.networks)?;
+        let address = parse_address(&datafeed.contract_address)?;
+        Ok(create_contract_with_provider(address, provider))
+    }
+    
+    /// Gets a contract instance with signer for write operations
+    async fn get_contract_for_write(&self, datafeed: &Datafeed) -> Result<IFluxAggregator<SignerMiddleware<Arc<Provider<Http>>, LocalWallet>>> {
+        let signer = self.network_manager
+            .get_signer(&datafeed.networks)
+            .with_context(|| format!("{} {}", errors::NO_SIGNER_AVAILABLE, datafeed.networks))?;
+        let address = parse_address(&datafeed.contract_address)?;
+        Ok(create_contract_with_signer(address, signer))
+    }
+    
     /// Checks if a contract update is needed based on time elapsed
     /// Returns true if minimum_update_frequency has passed since last update
     pub async fn should_update_based_on_time(
         &self,
         datafeed: &Datafeed,
     ) -> Result<bool> {
-        // Get provider and create contract instance
-        let provider = self.network_manager
-            .get_provider(&datafeed.networks)?;
-        
-        let address = parse_address(&datafeed.contract_address)?;
-        let contract = create_contract_with_provider(address, provider);
+        // Get contract instance
+        let contract = self.get_contract_for_read(datafeed).await?;
         
         // Get latest timestamp from contract
         let latest_timestamp = contract
@@ -54,6 +70,77 @@ impl<'a> ContractUpdater<'a> {
         Ok(time_since_update >= datafeed.minimum_update_frequency)
     }
     
+    /// Checks if a contract update is needed based on value deviation
+    /// Returns true if the new value deviates from the current on-chain value 
+    /// by more than the configured threshold percentage
+    pub async fn should_update_based_on_deviation(
+        &self,
+        datafeed: &Datafeed,
+        new_value: f64,
+    ) -> Result<bool> {
+        // Get contract instance
+        let contract = self.get_contract_for_read(datafeed).await?;
+        
+        // Get latest answer from contract
+        let latest_answer = match contract.latest_answer().call().await {
+            Ok(answer) => answer,
+            Err(e) => {
+                error!(
+                    "Failed to get latest answer from contract for datafeed {}: {}. Skipping deviation check.",
+                    datafeed.name, e
+                );
+                return Ok(false);
+            }
+        };
+        
+        // Scale the new value to match contract format
+        let decimals = datafeed.decimals.unwrap_or(8);
+        let scaled_new_value = scale_value_for_contract(new_value, decimals);
+        
+        // Convert I256 to i128 for comparison
+        let current_value = latest_answer.as_i128();
+        
+        // Calculate deviation percentage
+        let deviation = calculate_deviation_percentage(current_value, scaled_new_value);
+        
+        debug!(
+            "Datafeed {}: current value {}, new value {} (scaled), deviation {}%",
+            datafeed.name, current_value, scaled_new_value, deviation
+        );
+        
+        // Check if deviation exceeds threshold
+        let exceeds_threshold = deviation > datafeed.deviation_threshold_pct;
+        
+        if exceeds_threshold {
+            info!(
+                "Datafeed {}: deviation {}% exceeds threshold {}%",
+                datafeed.name, deviation, datafeed.deviation_threshold_pct
+            );
+        }
+        
+        Ok(exceeds_threshold)
+    }
+    
+    /// Checks if an update is needed based on either time or deviation thresholds
+    /// Returns (should_update, reason) where reason describes what triggered the update
+    pub async fn check_update_needed(
+        &self,
+        datafeed: &Datafeed,
+        new_value: f64,
+    ) -> Result<(bool, &'static str)> {
+        // Check both conditions
+        let time_check = self.should_update_based_on_time(datafeed).await?;
+        let deviation_check = self.should_update_based_on_deviation(datafeed, new_value).await?;
+        
+        // Determine if update is needed and why
+        match (time_check, deviation_check) {
+            (true, true) => Ok((true, "both time and deviation thresholds")),
+            (true, false) => Ok((true, "time threshold")),
+            (false, true) => Ok((true, "deviation threshold")),
+            (false, false) => Ok((false, "")),
+        }
+    }
+    
     /// Submits a new value to the contract
     pub async fn submit_value(
         &self,
@@ -65,13 +152,8 @@ impl<'a> ContractUpdater<'a> {
             value, datafeed.contract_address, datafeed.networks
         );
         
-        // Get signer for the network
-        let signer = self.network_manager
-            .get_signer(&datafeed.networks)
-            .with_context(|| format!("{} {}", errors::NO_SIGNER_AVAILABLE, datafeed.networks))?;
-        
-        let address = parse_address(&datafeed.contract_address)?;
-        let contract = create_contract_with_signer(address, signer);
+        // Get contract instance with signer
+        let contract = self.get_contract_for_write(datafeed).await?;
         
         // Get current round ID
         let latest_round = contract
@@ -280,5 +362,32 @@ mod tests {
         let time_since_just_before = now.saturating_sub(last_update_just_before);
         assert_eq!(time_since_just_before, datafeed.minimum_update_frequency - 1);
         assert!(time_since_just_before < datafeed.minimum_update_frequency); // Should not update
+    }
+
+    #[test]
+    fn test_deviation_threshold_calculations() {
+        let datafeed = create_test_datafeed(); // has 0.5% threshold
+        let decimals = datafeed.decimals.unwrap_or(8);
+        
+        // Current on-chain value: $100.00 (scaled)
+        let current_value: i128 = 10000000000; // 100 * 10^8
+        
+        // Test value with 0.4% deviation (below threshold)
+        let small_change = 100.4;
+        let scaled_small = scale_value_for_contract(small_change, decimals);
+        let small_deviation = calculate_deviation_percentage(current_value, scaled_small);
+        assert!(small_deviation < datafeed.deviation_threshold_pct);
+        
+        // Test value with 0.6% deviation (above threshold)
+        let large_change = 100.6;
+        let scaled_large = scale_value_for_contract(large_change, decimals);
+        let large_deviation = calculate_deviation_percentage(current_value, scaled_large);
+        assert!(large_deviation > datafeed.deviation_threshold_pct);
+        
+        // Test exact threshold (0.5%)
+        let exact_change = 100.5;
+        let scaled_exact = scale_value_for_contract(exact_change, decimals);
+        let exact_deviation = calculate_deviation_percentage(current_value, scaled_exact);
+        assert_eq!(exact_deviation, datafeed.deviation_threshold_pct);
     }
 }

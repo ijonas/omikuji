@@ -81,32 +81,24 @@ impl FeedMonitor {
     async fn check_and_update_contract(&self, value: f64) -> Result<()> {
         let updater = ContractUpdater::new(&self.network_manager);
         
-        // Check if update is needed based on time
-        match updater.should_update_based_on_time(&self.datafeed).await {
-            Ok(true) => {
-                info!(
-                    "Time-based update triggered for datafeed {}",
-                    self.datafeed.name
-                );
-                
-                // Submit the value to the contract
-                updater.submit_value(&self.datafeed, value).await?;
-                Ok(())
-            }
-            Ok(false) => {
-                debug!(
-                    "No update needed for datafeed {} - minimum frequency not reached",
-                    self.datafeed.name
-                );
-                Ok(())
-            }
-            Err(e) => {
-                error!(
-                    "Failed to check update requirement for datafeed {}: {}",
-                    self.datafeed.name, e
-                );
-                Err(e)
-            }
+        // Check if update is needed
+        let (should_update, reason) = updater.check_update_needed(&self.datafeed, value).await?;
+        
+        if should_update {
+            info!(
+                "Update triggered for datafeed {} due to {}",
+                self.datafeed.name, reason
+            );
+            
+            // Submit the value to the contract
+            updater.submit_value(&self.datafeed, value).await?;
+        } else {
+            debug!(
+                "No update needed for datafeed {} - neither time nor deviation thresholds met",
+                self.datafeed.name
+            );
         }
+        
+        Ok(())
     }
 }
