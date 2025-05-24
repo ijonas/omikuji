@@ -2,8 +2,12 @@
 
 Omikuji is a software daemon, written in Rust, that provides external off-chain data to EVM blockchains such as Ethereum and BASE.
 
+Some may call it a [blockchain oracle](https://en.wikipedia.org/wiki/Blockchain_oracle)
+
 The core model of Omikuji is the datafeed, which is a Solidity smart contract, that reports a single value and an accompanying timestamp and block number for when that value was last updated.
-This allows other (client) smart contracts to ascertain whether or not the value reported by the datafeed has gone stale or not. The concept of 'stale' is arbitrary and completely up to the client smart contracts to define.
+
+Omikuji will monitor external datafeeds such as price feeds (the price of gold, temperature in London, etc.) and when it notices significant change in the reported data it will write that data to a blockchain.
+
 
 ## ✨ Key Features
 
