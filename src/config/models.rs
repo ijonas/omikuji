@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 
 /// The main configuration structure for Omikuji
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct OmikujiConfig {
     /// Networks supported by this Omikuji instance
     #[validate]
@@ -14,7 +14,7 @@ pub struct OmikujiConfig {
 }
 
 /// Configuration for a blockchain network
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Network {
     /// Network name (e.g., "ethereum", "base")
     #[validate(length(min = 1))]
@@ -26,7 +26,7 @@ pub struct Network {
 }
 
 /// Configuration for a datafeed
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Datafeed {
     /// Datafeed name
     #[validate(length(min = 1))]

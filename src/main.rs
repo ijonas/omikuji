@@ -8,6 +8,7 @@ use tracing::{error, info};
 mod config;
 mod network;
 mod contracts;
+mod datafeed;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -101,9 +102,11 @@ async fn main() -> Result<()> {
     // Now wrap in Arc for sharing across threads
     let network_manager = Arc::new(network_manager);
 
-    // TODO: Initialize datafeeds
+    // Initialize and start datafeed monitoring
+    let mut feed_manager = datafeed::FeedManager::new(config.clone());
+    feed_manager.start().await;
+
     // TODO: Start the web interface
-    // TODO: Start datafeed monitoring
 
     info!("Omikuji starting up...");
 
