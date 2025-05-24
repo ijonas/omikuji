@@ -26,6 +26,12 @@ struct Args {
 async fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt::init();
+    
+    // Load .env file if it exists
+    match dotenv::dotenv() {
+        Ok(path) => info!("Loaded .env file from: {:?}", path),
+        Err(e) => info!("No .env file loaded: {}", e),
+    }
 
     // Parse command line arguments
     let args = Args::parse();
@@ -59,10 +65,10 @@ async fn main() -> Result<()> {
     }
 
     // Initialize network connections
-    let network_manager = match network::NetworkManager::new(&config.networks).await {
+    let mut network_manager = match network::NetworkManager::new(&config.networks).await {
         Ok(manager) => {
             info!("Network connections initialized successfully");
-            Arc::new(manager)
+            manager
         }
         Err(e) => {
             error!("Failed to initialize network connections: {}", e);
@@ -71,11 +77,17 @@ async fn main() -> Result<()> {
     };
 
     // Try to load wallets for all networks from environment variable
-    let mut network_manager_ref = Arc::clone(&network_manager);
-    let network_manager_mut = Arc::get_mut(&mut network_manager_ref).unwrap();
-
+    info!("Attempting to load wallet from environment variable: {}", args.private_key_env);
+    
+    // Check if the environment variable exists
+    if std::env::var(&args.private_key_env).is_ok() {
+        info!("Environment variable {} found", args.private_key_env);
+    } else {
+        error!("Environment variable {} not found", args.private_key_env);
+    }
+    
     for network in &config.networks {
-        match network_manager_mut.load_wallet_from_env(&network.name, &args.private_key_env).await {
+        match network_manager.load_wallet_from_env(&network.name, &args.private_key_env).await {
             Ok(_) => {
                 info!("Loaded wallet for network {}", network.name);
             },
@@ -85,6 +97,9 @@ async fn main() -> Result<()> {
             }
         }
     }
+
+    // Now wrap in Arc for sharing across threads
+    let network_manager = Arc::new(network_manager);
 
     // TODO: Initialize datafeeds
     // TODO: Start the web interface
