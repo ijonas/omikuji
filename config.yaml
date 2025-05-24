@@ -10,7 +10,7 @@ datafeeds:
     contract_type: fluxmon
     read_contract_config: true
     # minimum_update_frequency: 3600
-    minimum_update_frequency: 300
+    minimum_update_frequency: 3600
     deviation_threshold_pct: 0.1
     feed_url: https://min-api.cryptocompare.com/data/pricemultifull?fsyms=ETH&tsyms=USD
     feed_json_path: RAW.ETH.USD.PRICE
@@ -21,7 +21,7 @@ datafeeds:
     contract_address: 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
     contract_type: fluxmon
     read_contract_config: true
-    minimum_update_frequency: 300
+    minimum_update_frequency: 3600
     deviation_threshold_pct: 0.1
     feed_url: https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USD
     feed_json_path: RAW.BTC.USD.PRICE
