@@ -1,7 +1,11 @@
 [package]
 name = "omikuji"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["Ijonas Kisselbach <ijonas.kisselbach@gmail.com>"]
+description = "A lightweight EVM blockchain datafeed provider daemon"
+repository = "https://github.com/ijonas/omikuji"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 # Configuration and CLI
