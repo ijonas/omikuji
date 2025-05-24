@@ -13,6 +13,8 @@ abigen!(
         function decimals() external view returns (uint8)
         function description() external view returns (string memory)
         function version() external view returns (uint256)
+        function minSubmissionValue() external view returns (int256)
+        function maxSubmissionValue() external view returns (int256)
         function getRoundData(uint80 _roundId) returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
         function latestRoundData() returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
         function submit(uint256 _roundId, int256 _submission) external
