@@ -21,6 +21,7 @@ abigen!(
 );
 
 /// Additional helper methods when using IFluxAggregator with a signer
+#[allow(dead_code)]
 impl<M: Middleware> IFluxAggregator<M> {
     /// Submits a new price to the FluxAggregator contract
     ///

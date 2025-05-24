@@ -14,3 +14,14 @@ datafeeds:
     feed_url: https://min-api.cryptocompare.com/data/pricemultifull?fsyms=ETH&tsyms=USD
     feed_json_path: RAW.ETH.USD.PRICE
     feed_json_path_timestamp: RAW.ETH.USD.LASTUPDATE
+  - name: btc_usd
+    networks: local
+    check_frequency: 60
+    contract_address: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+    contract_type: fluxmon
+    read_contract_config: true
+    minimum_update_frequency: 3600
+    deviation_threshold_pct: 0.5
+    feed_url: https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USD
+    feed_json_path: RAW.BTC.USD.PRICE
+    feed_json_path_timestamp: RAW.BTC.USD.LASTUPDATE

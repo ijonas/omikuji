@@ -2177,6 +2177,7 @@ dependencies = [
  "jsonpath-rust",
  "prometheus",
  "prometheus-hyper",
+ "rand",
  "reqwest",
  "serde",
  "serde_yaml",
