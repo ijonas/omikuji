@@ -12,7 +12,14 @@ mod datafeed;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
-#[command(author, version, about)]
+#[command(
+    author,
+    version,
+    about = "Omikuji - A lightweight EVM blockchain datafeed provider",
+    long_about = "Omikuji is a daemon that provides external off-chain data to EVM blockchains \
+                  such as Ethereum and BASE. It manages datafeeds defined in YAML configuration \
+                  files and updates smart contracts based on time and deviation thresholds."
+)]
 struct Args {
     /// Path to configuration file
     #[arg(short, long, value_name = "FILE")]
@@ -25,7 +32,11 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
+    // Parse command line arguments first
+    // This allows --version and --help to work without any side effects
+    let args = Args::parse();
+
+    // Initialize logging after argument parsing
     tracing_subscriber::fmt::init();
     
     // Load .env file if it exists
@@ -33,9 +44,6 @@ async fn main() -> Result<()> {
         Ok(path) => info!("Loaded .env file from: {:?}", path),
         Err(e) => info!("No .env file loaded: {}", e),
     }
-
-    // Parse command line arguments
-    let args = Args::parse();
 
     // Determine configuration path
     let config_path = args.config.unwrap_or_else(config::default_config_path);
