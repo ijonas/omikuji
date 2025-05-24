@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
     let network_manager = Arc::new(network_manager);
 
     // Initialize and start datafeed monitoring
-    let mut feed_manager = datafeed::FeedManager::new(config.clone());
+    let mut feed_manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager));
     feed_manager.start().await;
 
     // TODO: Start the web interface
