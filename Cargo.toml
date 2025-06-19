@@ -53,6 +53,9 @@ chrono = { version = "0.4", features = ["serde"] }
 cron = "0.12"
 tokio-cron-scheduler = "0.9"
 
+# Utilities
+lazy_static = "1.4"
+
 [dev-dependencies]
 tempfile = "3.9"
 rand = "0.8"

@@ -2547,6 +2547,7 @@ dependencies = [
  "ethers-providers",
  "hyper 1.6.0",
  "jsonpath-rust",
+ "lazy_static",
  "mockito",
  "prometheus",
  "prometheus-hyper",

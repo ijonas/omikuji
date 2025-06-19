@@ -7,6 +7,7 @@ use tracing::{info, error, debug};
 use crate::network::NetworkManager;
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::contracts::flux_aggregator::IFluxAggregator;
+use crate::database::TransactionLogRepository;
 use super::contract_utils::{
     parse_address, create_contract_with_provider, create_contract_with_signer,
     scale_value_for_contract, validate_value_bounds, current_timestamp, 
@@ -17,12 +18,22 @@ use super::contract_utils::{
 pub struct ContractUpdater<'a> {
     network_manager: &'a Arc<NetworkManager>,
     config: &'a OmikujiConfig,
+    tx_log_repo: Option<Arc<TransactionLogRepository>>,
 }
 
 impl<'a> ContractUpdater<'a> {
     /// Creates a new ContractUpdater
     pub fn new(network_manager: &'a Arc<NetworkManager>, config: &'a OmikujiConfig) -> Self {
-        Self { network_manager, config }
+        Self { network_manager, config, tx_log_repo: None }
+    }
+    
+    /// Creates a new ContractUpdater with transaction logging
+    pub fn with_tx_logging(
+        network_manager: &'a Arc<NetworkManager>, 
+        config: &'a OmikujiConfig,
+        tx_log_repo: Arc<TransactionLogRepository>
+    ) -> Self {
+        Self { network_manager, config, tx_log_repo: Some(tx_log_repo) }
     }
     
     /// Gets the network configuration for a datafeed
@@ -192,7 +203,13 @@ impl<'a> ContractUpdater<'a> {
         let network_config = self.get_network_config(datafeed)?;
         
         // Submit the transaction with gas estimation
-        match contract.submit_price_with_gas_estimation(next_round, submission, network_config).await {
+        match contract.submit_price_with_gas_estimation(
+            next_round, 
+            submission, 
+            network_config,
+            &datafeed.name,
+            self.tx_log_repo.clone(),
+        ).await {
             Ok(receipt) => {
                 info!(
                     "Successfully submitted value to contract. Tx hash: {:?}, Gas used: {:?}",
