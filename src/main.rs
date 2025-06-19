@@ -12,6 +12,7 @@ mod datafeed;
 mod gas;
 mod database;
 mod metrics;
+mod wallet;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -169,6 +170,12 @@ async fn main() -> Result<()> {
     } else {
         info!("Prometheus metrics available at http://0.0.0.0:9090/metrics");
     }
+
+    // Start wallet balance monitor
+    let wallet_monitor = wallet::WalletBalanceMonitor::new(Arc::clone(&network_manager));
+    tokio::spawn(async move {
+        wallet_monitor.start().await;
+    });
 
     info!("Omikuji starting up...");
 

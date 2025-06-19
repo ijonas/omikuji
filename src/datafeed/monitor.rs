@@ -2,6 +2,7 @@ use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::network::NetworkManager;
 use crate::database::{FeedLogRepository, TransactionLogRepository};
 use crate::database::models::NewFeedLog;
+use crate::metrics::FeedMetrics;
 use super::fetcher::Fetcher;
 use super::json_extractor::JsonExtractor;
 use super::contract_updater::ContractUpdater;
@@ -52,6 +53,28 @@ impl FeedMonitor {
                         "Datafeed {}: value={}, timestamp={}",
                         self.datafeed.name, value, timestamp
                     );
+                    
+                    // Update Prometheus metrics
+                    FeedMetrics::set_feed_value(
+                        &self.datafeed.name,
+                        &self.datafeed.networks,
+                        value,
+                        timestamp,
+                    );
+                    
+                    // Update contract metrics (read current contract state)
+                    let updater = if let Some(ref tx_repo) = self.tx_log_repo {
+                        ContractUpdater::with_tx_logging(&self.network_manager, &self.config, tx_repo.clone())
+                    } else {
+                        ContractUpdater::new(&self.network_manager, &self.config)
+                    };
+                    
+                    if let Err(e) = updater.update_contract_metrics(&self.datafeed, value).await {
+                        error!(
+                            "Failed to update contract metrics for {}: {}",
+                            self.datafeed.name, e
+                        );
+                    }
                     
                     // Save to database if repository is available
                     if let Some(ref repository) = self.repository {
