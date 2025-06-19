@@ -63,7 +63,7 @@ impl TransactionLogRepository {
                 tx_hash, feed_name, network_name, gas_limit, gas_used,
                 gas_price_gwei, total_cost_wei, efficiency_percent,
                 tx_type, status, block_number, error_message
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7::NUMERIC, $8, $9, $10, $11, $12)
             ON CONFLICT (tx_hash) DO UPDATE SET
                 gas_used = EXCLUDED.gas_used,
                 gas_price_gwei = EXCLUDED.gas_price_gwei,
