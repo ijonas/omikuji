@@ -23,6 +23,113 @@ pub struct Network {
     /// RPC URL for the network
     #[validate(url)]
     pub rpc_url: String,
+
+    /// Transaction type to use ("legacy" or "eip1559")
+    #[serde(default = "default_transaction_type")]
+    #[validate(custom = "validate_transaction_type")]
+    pub transaction_type: String,
+
+    /// Gas configuration for this network
+    #[serde(default)]
+    #[validate]
+    pub gas_config: GasConfig,
+}
+
+/// Gas configuration for a network
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct GasConfig {
+    /// Gas limit override (optional, will estimate if not provided)
+    pub gas_limit: Option<u64>,
+
+    /// For legacy transactions: gas price in gwei (optional, will estimate if not provided)
+    pub gas_price_gwei: Option<f64>,
+
+    /// For EIP-1559: max fee per gas in gwei (optional, will estimate if not provided)
+    pub max_fee_per_gas_gwei: Option<f64>,
+
+    /// For EIP-1559: max priority fee per gas in gwei (optional, will estimate if not provided)
+    pub max_priority_fee_per_gas_gwei: Option<f64>,
+
+    /// Gas estimation multiplier (default: 1.2 for 20% buffer)
+    #[serde(default = "default_gas_multiplier")]
+    #[validate(range(min = 1.0, max = 5.0))]
+    pub gas_multiplier: f64,
+
+    /// Fee bumping configuration
+    #[serde(default)]
+    #[validate]
+    pub fee_bumping: FeeBumpingConfig,
+}
+
+/// Fee bumping configuration for stuck transactions
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct FeeBumpingConfig {
+    /// Enable automatic fee bumping for stuck transactions
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Maximum number of retry attempts
+    #[serde(default = "default_max_retries")]
+    #[validate(range(min = 0, max = 10))]
+    pub max_retries: u8,
+
+    /// Initial wait time before first retry (in seconds)
+    #[serde(default = "default_initial_wait")]
+    #[validate(range(min = 10, max = 600))]
+    pub initial_wait_seconds: u64,
+
+    /// Fee increase percentage for each retry
+    #[serde(default = "default_fee_increase_percent")]
+    #[validate(range(min = 5.0, max = 100.0))]
+    pub fee_increase_percent: f64,
+}
+
+fn default_transaction_type() -> String {
+    "eip1559".to_string()
+}
+
+fn default_gas_multiplier() -> f64 {
+    1.2
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_retries() -> u8 {
+    3
+}
+
+fn default_initial_wait() -> u64 {
+    30
+}
+
+fn default_fee_increase_percent() -> f64 {
+    10.0
+}
+
+impl Default for GasConfig {
+    fn default() -> Self {
+        Self {
+            gas_limit: None,
+            gas_price_gwei: None,
+            max_fee_per_gas_gwei: None,
+            max_priority_fee_per_gas_gwei: None,
+            gas_multiplier: default_gas_multiplier(),
+            fee_bumping: FeeBumpingConfig::default(),
+        }
+    }
+}
+
+impl Default for FeeBumpingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            max_retries: default_max_retries(),
+            initial_wait_seconds: default_initial_wait(),
+            fee_increase_percent: default_fee_increase_percent(),
+        }
+    }
 }
 
 /// Configuration for a datafeed
@@ -88,4 +195,12 @@ fn validate_eth_address(address: &str) -> Result<(), ValidationError> {
         return Err(ValidationError::new("invalid_eth_address"));
     }
     Ok(())
+}
+
+/// Validates that transaction type is either "legacy" or "eip1559"
+pub fn validate_transaction_type(tx_type: &str) -> Result<(), ValidationError> {
+    match tx_type.to_lowercase().as_str() {
+        "legacy" | "eip1559" => Ok(()),
+        _ => Err(ValidationError::new("invalid_transaction_type")),
+    }
 }

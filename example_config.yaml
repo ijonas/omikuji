@@ -1,6 +1,23 @@
 networks:
   - name: local
     rpc_url: http://localhost:8545
+    # Transaction type: "legacy" or "eip1559" (default: eip1559)
+    transaction_type: eip1559
+    
+    # Gas configuration - see docs/gas-configuration.md for detailed explanation
+    gas_config:
+      # Basic settings with automatic estimation
+      gas_multiplier: 1.2  # 20% safety margin on estimates
+      
+      # Fee bumping for stuck transactions
+      fee_bumping:
+        enabled: true
+        max_retries: 3
+        initial_wait_seconds: 30
+        fee_increase_percent: 10.0
+      
+      # For manual overrides and advanced settings, see:
+      # docs/gas-configuration.md#configuration-examples
 
 datafeeds:
   - name: eth_usd

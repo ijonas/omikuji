@@ -4,6 +4,9 @@ The Omikuji configuration file is defined as follows:
 networks:
   - name: ethereum
     rpc_url: https://eth.llamarpc.com
+    transaction_type: eip1559  # "legacy" or "eip1559" (default: eip1559)
+    gas_config:               # See docs/gas-configuration.md for detailed gas settings
+      gas_multiplier: 1.2
   - name: base
     rpc_url: https://base.llamarpc.com
 

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tracing::{info, error, debug};
 
 use crate::network::NetworkManager;
-use crate::config::models::Datafeed;
+use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::contracts::flux_aggregator::IFluxAggregator;
 use super::contract_utils::{
     parse_address, create_contract_with_provider, create_contract_with_signer,
@@ -16,12 +16,21 @@ use super::contract_utils::{
 /// Handles contract updates based on time and deviation thresholds
 pub struct ContractUpdater<'a> {
     network_manager: &'a Arc<NetworkManager>,
+    config: &'a OmikujiConfig,
 }
 
 impl<'a> ContractUpdater<'a> {
     /// Creates a new ContractUpdater
-    pub fn new(network_manager: &'a Arc<NetworkManager>) -> Self {
-        Self { network_manager }
+    pub fn new(network_manager: &'a Arc<NetworkManager>, config: &'a OmikujiConfig) -> Self {
+        Self { network_manager, config }
+    }
+    
+    /// Gets the network configuration for a datafeed
+    fn get_network_config(&self, datafeed: &Datafeed) -> Result<&crate::config::models::Network> {
+        self.config.networks
+            .iter()
+            .find(|n| n.name == datafeed.networks)
+            .ok_or_else(|| anyhow::anyhow!("Network {} not found in configuration", datafeed.networks))
     }
     
     /// Gets a contract instance with provider for read operations
@@ -179,8 +188,11 @@ impl<'a> ContractUpdater<'a> {
             next_round, submission, value
         );
         
-        // Submit the transaction
-        match contract.submit_price(next_round, submission, None).await {
+        // Get network configuration for gas settings
+        let network_config = self.get_network_config(datafeed)?;
+        
+        // Submit the transaction with gas estimation
+        match contract.submit_price_with_gas_estimation(next_round, submission, network_config).await {
             Ok(receipt) => {
                 info!(
                     "Successfully submitted value to contract. Tx hash: {:?}, Gas used: {:?}",

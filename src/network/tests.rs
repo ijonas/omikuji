@@ -10,6 +10,8 @@ mod tests {
         Network {
             name: name.to_string(),
             rpc_url: rpc_url.to_string(),
+            transaction_type: "eip1559".to_string(),
+            gas_config: Default::default(),
         }
     }
 

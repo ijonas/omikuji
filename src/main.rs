@@ -9,6 +9,7 @@ mod config;
 mod network;
 mod contracts;
 mod datafeed;
+mod gas;
 
 /// Command line arguments
 #[derive(Parser, Debug)]

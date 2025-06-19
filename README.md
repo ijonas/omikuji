@@ -29,6 +29,9 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
   - Contract Configuration Reading: Automatically read decimals, min/max values from deployed contracts
   - Environment Variable Support: Secure wallet management through environment variables
   - Flexible JSON Path Extraction: Support for complex nested JSON structures using dot notation
+  - EIP-1559 Transaction Support: Modern gas pricing with automatic fee estimation
+  - Fee Bumping: Automatic retry with increased fees for stuck transactions
+  - Gas Configuration: Per-network gas settings with manual override options
 
   Monitoring & Reliability
 
@@ -110,4 +113,7 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
 
 ## 📚 Documentation
 
-  For more information, documentation, and contribution guidelines, visit: https://github.com/ijonas/omikuji
+  - [Gas Configuration Guide](docs/gas-configuration.md) - Detailed guide for configuring gas settings, transaction types, and fee strategies
+  - [Configuration Reference](specs/configuration.md) - Complete configuration file specification
+
+  For more information and contribution guidelines, visit: https://github.com/ijonas/omikuji

@@ -125,7 +125,8 @@ impl FeedManager {
         let monitor = FeedMonitor::new(
             datafeed.clone(), 
             Arc::clone(&self.fetcher),
-            Arc::clone(&self.network_manager)
+            Arc::clone(&self.network_manager),
+            self.config.clone()
         );
         let feed_name = datafeed.name.clone();
         

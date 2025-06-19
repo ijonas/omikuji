@@ -1,4 +1,4 @@
-use crate::config::models::Datafeed;
+use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::network::NetworkManager;
 use super::fetcher::Fetcher;
 use super::json_extractor::JsonExtractor;
@@ -13,12 +13,13 @@ pub struct FeedMonitor {
     pub(crate) datafeed: Datafeed,
     fetcher: Arc<Fetcher>,
     network_manager: Arc<NetworkManager>,
+    config: OmikujiConfig,
 }
 
 impl FeedMonitor {
     /// Creates a new FeedMonitor for the given datafeed
-    pub fn new(datafeed: Datafeed, fetcher: Arc<Fetcher>, network_manager: Arc<NetworkManager>) -> Self {
-        Self { datafeed, fetcher, network_manager }
+    pub fn new(datafeed: Datafeed, fetcher: Arc<Fetcher>, network_manager: Arc<NetworkManager>, config: OmikujiConfig) -> Self {
+        Self { datafeed, fetcher, network_manager, config }
     }
     
     /// Starts monitoring the datafeed
@@ -79,7 +80,7 @@ impl FeedMonitor {
     
     /// Checks if contract update is needed and submits if necessary
     async fn check_and_update_contract(&self, value: f64) -> Result<()> {
-        let updater = ContractUpdater::new(&self.network_manager);
+        let updater = ContractUpdater::new(&self.network_manager, &self.config);
         
         // Check if update is needed
         let (should_update, reason) = updater.check_update_needed(&self.datafeed, value).await?;

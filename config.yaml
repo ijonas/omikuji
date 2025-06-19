@@ -1,6 +1,14 @@
 networks:
   - name: local
     rpc_url: http://localhost:8545
+    transaction_type: eip1559
+    gas_config:
+      gas_multiplier: 1.2
+      fee_bumping:
+        enabled: true
+        max_retries: 3
+        initial_wait_seconds: 30
+        fee_increase_percent: 10.0
 
 datafeeds:
   - name: eth_usd
