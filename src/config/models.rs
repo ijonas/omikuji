@@ -11,6 +11,36 @@ pub struct OmikujiConfig {
     /// Datafeeds managed by this Omikuji instance
     #[validate]
     pub datafeeds: Vec<Datafeed>,
+
+    /// Database cleanup configuration
+    #[serde(default)]
+    #[validate]
+    pub database_cleanup: DatabaseCleanupConfig,
+}
+
+/// Configuration for database cleanup task
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct DatabaseCleanupConfig {
+    /// Cron schedule for cleanup task (default: "0 0 * * * *" - every hour)
+    #[serde(default = "default_cleanup_schedule")]
+    pub schedule: String,
+
+    /// Whether cleanup is enabled (default: true)
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for DatabaseCleanupConfig {
+    fn default() -> Self {
+        Self {
+            schedule: default_cleanup_schedule(),
+            enabled: true,
+        }
+    }
+}
+
+fn default_cleanup_schedule() -> String {
+    "0 0 * * * *".to_string() // Every hour at minute 0
 }
 
 /// Configuration for a blockchain network
@@ -185,6 +215,15 @@ pub struct Datafeed {
 
     /// Maximum valid value (optional, used when read_contract_config is false)
     pub max_value: Option<i64>,
+
+    /// Data retention window in days (default: 7)
+    #[serde(default = "default_data_retention_days")]
+    #[validate(range(min = 1, max = 365))]
+    pub data_retention_days: u32,
+}
+
+fn default_data_retention_days() -> u32 {
+    7
 }
 
 /// Validates that a string is a valid Ethereum address

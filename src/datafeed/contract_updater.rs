@@ -230,6 +230,7 @@ mod tests {
             feed_url: "http://example.com/api".to_string(),
             feed_json_path: "data.price".to_string(),
             feed_json_path_timestamp: Some("data.timestamp".to_string()),
+            data_retention_days: 7,
         }
     }
 

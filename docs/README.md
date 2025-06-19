@@ -13,6 +13,13 @@ Welcome to the Omikuji documentation. This directory contains detailed guides an
   - Network-specific examples and scenarios
   - Troubleshooting gas-related issues
 
+- **[Database Setup Guide](database-setup.md)** - PostgreSQL setup and configuration
+  - Installation instructions
+  - Database configuration
+  - Data retention settings
+  - Cleanup scheduling
+  - Monitoring and troubleshooting
+
 ### Technical Specifications
 
 - **[Configuration Reference](../specs/configuration.md)** - Complete YAML configuration file specification

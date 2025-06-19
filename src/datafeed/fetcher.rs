@@ -1,7 +1,21 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use reqwest::Client;
 use serde_json::Value;
 use tracing::{debug, error};
+use thiserror::Error;
+
+/// Errors that can occur when fetching data
+#[derive(Debug, Error)]
+pub enum FetchError {
+    #[error("HTTP error with status code: {0}")]
+    HttpError(u16),
+    
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    
+    #[error("JSON parsing error: {0}")]
+    JsonError(String),
+}
 
 /// Fetches JSON data from a given URL
 pub struct Fetcher {
@@ -24,24 +38,32 @@ impl Fetcher {
     pub async fn fetch_json(&self, url: &str) -> Result<Value> {
         debug!("Fetching data from: {}", url);
         
-        let response = self.client
+        let response = match self.client
             .get(url)
             .header("Accept", "application/json")
             .send()
-            .await
-            .with_context(|| format!("Failed to fetch from URL: {}", url))?;
+            .await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    error!("Network error fetching from {}: {}", url, e);
+                    return Err(FetchError::NetworkError(e.to_string()).into());
+                }
+            };
         
         let status = response.status();
         
         if !status.is_success() {
             error!("HTTP error {}: {}", status.as_u16(), status.canonical_reason().unwrap_or("Unknown"));
-            anyhow::bail!("HTTP request failed with status: {}", status);
+            return Err(FetchError::HttpError(status.as_u16()).into());
         }
         
-        let json: Value = response
-            .json()
-            .await
-            .with_context(|| "Failed to parse response as JSON")?;
+        let json: Value = match response.json().await {
+            Ok(json) => json,
+            Err(e) => {
+                error!("JSON parsing error: {}", e);
+                return Err(FetchError::JsonError(e.to_string()).into());
+            }
+        };
         
         debug!("Successfully fetched and parsed JSON data");
         Ok(json)

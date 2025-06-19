@@ -1,0 +1,94 @@
+# Example Omikuji configuration with database storage enabled
+# This configuration demonstrates both gas optimization and database features
+
+# Networks Configuration
+networks:
+  - name: ethereum
+    url: https://mainnet.infura.io/v3/YOUR_INFURA_KEY
+    transaction_type: eip1559  # Use modern EIP-1559 transactions
+    gas_config:
+      gas_multiplier: 1.3  # 30% safety margin for gas estimation
+      max_fee_per_gas_gwei: 100  # Maximum we're willing to pay
+      max_priority_fee_per_gas_gwei: 2  # Tip for miners
+      fee_bumping:
+        enabled: true
+        max_retries: 5
+        initial_wait_seconds: 60
+        fee_increase_percent: 15.0
+
+  - name: base
+    url: https://base-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
+    transaction_type: legacy  # Use legacy transactions
+    gas_config:
+      gas_price_gwei: 0.05
+      gas_multiplier: 1.2
+
+# Database Configuration (optional)
+# Remove this section if you don't want to use database storage
+database:
+  cleanup_schedule: "0 */2 * * * *"  # Run cleanup every 2 hours
+  # Note: Set DATABASE_URL environment variable to connect to PostgreSQL
+  # Example: DATABASE_URL=postgresql://user:password@localhost/omikuji
+
+# Datafeeds Configuration
+datafeeds:
+  # ETH/USD price feed with 7-day data retention
+  - name: eth_usd
+    networks: ethereum
+    check_frequency: 60  # Check every minute
+    contract_address: 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419
+    contract_type: fluxmon
+    read_contract_config: true
+    minimum_update_frequency: 3600  # Update at least hourly
+    deviation_threshold_pct: 0.5  # Update on 0.5% price change
+    feed_url: https://api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD
+    feed_json_path: USD
+    data_retention_days: 7  # Keep 7 days of history
+
+  # BTC/USD price feed with 30-day data retention
+  - name: btc_usd
+    networks: base
+    check_frequency: 120  # Check every 2 minutes
+    contract_address: 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70
+    contract_type: fluxmon
+    read_contract_config: false
+    decimals: 8
+    min_value: 1000000000000  # $10,000 minimum
+    max_value: 10000000000000  # $100,000 maximum
+    minimum_update_frequency: 7200  # Update at least every 2 hours
+    deviation_threshold_pct: 1.0  # Update on 1% price change
+    feed_url: https://api.coinbase.com/v2/exchange-rates?currency=BTC
+    feed_json_path: data.rates.USD
+    data_retention_days: 30  # Keep 30 days of history
+
+  # LINK/USD price feed with 14-day data retention
+  - name: link_usd
+    networks: ethereum
+    check_frequency: 300  # Check every 5 minutes
+    contract_address: 0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c
+    contract_type: fluxmon
+    read_contract_config: true
+    minimum_update_frequency: 14400  # Update at least every 4 hours
+    deviation_threshold_pct: 2.0  # Update on 2% price change
+    feed_url: https://api.binance.com/api/v3/ticker/price?symbol=LINKUSDT
+    feed_json_path: price
+    data_retention_days: 14  # Keep 14 days of history
+
+# Environment Variables Required:
+# - OMIKUJI_PRIVATE_KEY: Your wallet private key for submitting transactions
+# - DATABASE_URL: PostgreSQL connection string (optional, for database features)
+#   Example: postgresql://omikuji:password@localhost:5432/omikuji_db
+
+# To run with this configuration:
+# 1. Set up PostgreSQL (if using database features):
+#    createdb omikuji_db
+#    export DATABASE_URL="postgresql://user:password@localhost/omikuji_db"
+#
+# 2. Set your private key:
+#    export OMIKUJI_PRIVATE_KEY="your_private_key_here"
+#
+# 3. Run Omikuji:
+#    omikuji --config config-example-with-database.yaml
+#
+# 4. Monitor database (optional):
+#    psql $DATABASE_URL -c "SELECT * FROM feed_log ORDER BY created_at DESC LIMIT 10;"

@@ -182,7 +182,7 @@ mod tests {
             let result = fetcher.fetch_json(&url).await;
             
             assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("HTTP request failed with status: 500"));
+            assert!(result.unwrap_err().to_string().contains("HTTP error with status code: 500"));
             
             mock.assert_async().await;
         }
@@ -203,7 +203,7 @@ mod tests {
             let result = fetcher.fetch_json(&url).await;
             
             assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("Failed to parse response as JSON"));
+            assert!(result.unwrap_err().to_string().contains("JSON parsing error"));
             
             mock.assert_async().await;
         }
@@ -215,7 +215,7 @@ mod tests {
             let result = fetcher.fetch_json("http://localhost:99999/nonexistent").await;
             
             assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("Failed to fetch from URL"));
+            assert!(result.unwrap_err().to_string().contains("Network error"));
         }
     }
     
