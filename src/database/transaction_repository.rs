@@ -56,6 +56,11 @@ impl TransactionLogRepository {
     /// Save a transaction log entry
     pub async fn save_transaction(&self, details: TransactionDetails) -> Result<i32> {
         let total_cost_wei = details.total_cost_wei.to_string();
+        
+        debug!(
+            "Attempting to save transaction log: feed={}, network={}, tx_hash={}, gas_used={}, gas_price={:.2} gwei, status={}, efficiency={:.1}%",
+            details.feed_name, details.network, details.tx_hash, details.gas_used, details.gas_price_gwei, details.status, details.efficiency_percent
+        );
 
         let result = sqlx::query_as::<_, (i32,)>(
             r#"
@@ -92,8 +97,8 @@ impl TransactionLogRepository {
         .context("Failed to save transaction log")?;
 
         debug!(
-            "Saved transaction log for {} on {} - tx_hash: {}",
-            details.feed_name, details.network, details.tx_hash
+            "Successfully saved transaction log with id={}: feed={} on {} - tx_hash: {}, block_number={}",
+            result.0, details.feed_name, details.network, details.tx_hash, details.block_number
         );
 
         Ok(result.0)

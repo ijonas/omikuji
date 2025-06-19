@@ -5,7 +5,7 @@ use crate::gas::GasEstimate;
 use crate::config::models::{Network, GasConfig, FeeBumpingConfig};
 use crate::metrics::gas_metrics::{GasMetrics, TransactionDetails};
 use crate::database::TransactionLogRepository;
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
 use tokio::time::{sleep, Duration};
 use std::sync::Arc;
 
@@ -302,6 +302,8 @@ impl<M: Middleware> IFluxAggregator<M> {
                     
                     // Save to database if repository available
                     if let Some(repo) = tx_log_repo.as_ref() {
+                        debug!("Preparing to save transaction log to database for {} on {}", feed_name, network_name);
+                        
                         let gas_used = receipt.gas_used.unwrap_or_default();
                         let effective_gas_price = receipt.effective_gas_price.unwrap_or_default();
                         let total_cost_wei = gas_used.saturating_mul(effective_gas_price);
@@ -326,9 +328,16 @@ impl<M: Middleware> IFluxAggregator<M> {
                             error_message: None,
                         };
                         
-                        if let Err(e) = repo.save_transaction(tx_details).await {
-                            error!("Failed to save transaction log: {}", e);
+                        match repo.save_transaction(tx_details).await {
+                            Ok(id) => {
+                                debug!("Transaction log saved successfully with id={} for {} on {}", id, feed_name, network_name);
+                            }
+                            Err(e) => {
+                                error!("Failed to save transaction log for {} on {}: {}", feed_name, network_name, e);
+                            }
                         }
+                    } else {
+                        debug!("No transaction log repository configured, skipping database save for {} on {}", feed_name, network_name);
                     }
                     
                     return Ok(receipt);

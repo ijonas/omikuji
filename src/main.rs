@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use tracing::{error, info};
+use tracing::{error, info, debug};
 
 mod config;
 mod network;
@@ -115,22 +115,34 @@ async fn main() -> Result<()> {
     let network_manager = Arc::new(network_manager);
 
     // Initialize database connection (optional - continues if not available)
-    let database_pool = match database::establish_connection().await {
-        Ok(pool) => {
-            info!("Database connection established");
-            
-            // Run migrations
-            if let Err(e) = database::connection::run_migrations(&pool).await {
-                error!("Failed to run database migrations: {}", e);
-                error!("Continuing without database support");
-                None
-            } else {
-                Some(pool)
+    info!("Checking for database configuration...");
+    let database_pool = match std::env::var("DATABASE_URL") {
+        Ok(_) => {
+            debug!("DATABASE_URL environment variable found, attempting database connection");
+            match database::establish_connection().await {
+                Ok(pool) => {
+                    info!("Database connection established successfully");
+                    
+                    // Run migrations
+                    if let Err(e) = database::connection::run_migrations(&pool).await {
+                        error!("Failed to run database migrations: {}", e);
+                        error!("Continuing without database support");
+                        None
+                    } else {
+                        info!("Database initialized with feed logging and transaction tracking enabled");
+                        Some(pool)
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to establish database connection: {}", e);
+                    error!("Continuing without database logging");
+                    None
+                }
             }
         }
-        Err(e) => {
-            error!("Failed to establish database connection: {}", e);
-            error!("Continuing without database logging");
+        Err(_) => {
+            info!("DATABASE_URL not set - running without database logging");
+            info!("To enable database logging, set DATABASE_URL environment variable");
             None
         }
     };

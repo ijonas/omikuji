@@ -18,6 +18,11 @@ impl FeedLogRepository {
 
     /// Saves a new feed log entry
     pub async fn save(&self, log: NewFeedLog) -> Result<FeedLog> {
+        debug!(
+            "Attempting to save feed log: feed={}, network={}, value={}, timestamp={}, error_status={:?}, network_error={}",
+            log.feed_name, log.network_name, log.feed_value, log.feed_timestamp, log.error_status_code, log.network_error
+        );
+        
         let record = sqlx::query_as::<_, FeedLog>(
             r#"
             INSERT INTO feed_log (
@@ -53,8 +58,8 @@ impl FeedLogRepository {
         .context("Failed to insert feed log")?;
 
         debug!(
-            "Saved feed log: feed={}, network={}, value={}, timestamp={}",
-            record.feed_name, record.network_name, record.feed_value, record.feed_timestamp
+            "Successfully saved feed log with id={}: feed={}, network={}, value={}, timestamp={}, created_at={}",
+            record.id, record.feed_name, record.network_name, record.feed_value, record.feed_timestamp, record.created_at
         );
 
         Ok(record)

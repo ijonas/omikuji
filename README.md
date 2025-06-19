@@ -123,6 +123,7 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
   - [Gas Monitoring Guide](docs/gas-monitoring.md) - Track gas consumption with Prometheus metrics and analyze costs
   - [Prometheus Metrics Guide](docs/prometheus-metrics.md) - Complete reference for all exported metrics and monitoring setup
   - [Database Setup Guide](docs/database-setup.md) - PostgreSQL setup, data retention, and monitoring
+  - [Debug Logging Guide](docs/debug-logging.md) - Enable detailed logging for troubleshooting database operations
   - [Configuration Reference](specs/configuration.md) - Complete configuration file specification
 
   For more information and contribution guidelines, visit: https://github.com/ijonas/omikuji

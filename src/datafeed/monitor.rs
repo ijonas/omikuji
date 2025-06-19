@@ -78,6 +78,11 @@ impl FeedMonitor {
                     
                     // Save to database if repository is available
                     if let Some(ref repository) = self.repository {
+                        debug!(
+                            "Saving feed log to database for {}: value={}, timestamp={}",
+                            self.datafeed.name, value, timestamp
+                        );
+                        
                         let log = NewFeedLog {
                             feed_name: self.datafeed.name.clone(),
                             network_name: self.datafeed.networks.clone(),
@@ -87,12 +92,25 @@ impl FeedMonitor {
                             network_error: false,
                         };
                         
-                        if let Err(e) = repository.save(log).await {
-                            error!(
-                                "Failed to save feed log for {}: {}",
-                                self.datafeed.name, e
-                            );
+                        match repository.save(log).await {
+                            Ok(saved_log) => {
+                                debug!(
+                                    "Feed log saved successfully for {} with id={}",
+                                    self.datafeed.name, saved_log.id
+                                );
+                            }
+                            Err(e) => {
+                                error!(
+                                    "Failed to save feed log for {}: {}",
+                                    self.datafeed.name, e
+                                );
+                            }
                         }
+                    } else {
+                        debug!(
+                            "No database repository configured for feed {}, skipping database save",
+                            self.datafeed.name
+                        );
                     }
                     
                     // Check if contract update is needed based on time
@@ -177,6 +195,11 @@ impl FeedMonitor {
             (None, true)
         };
         
+        debug!(
+            "Saving error log for feed {}: error_status={:?}, network_error={}, error_message={}",
+            self.datafeed.name, error_status_code, network_error, error
+        );
+        
         let log = NewFeedLog {
             feed_name: self.datafeed.name.clone(),
             network_name: self.datafeed.networks.clone(),
@@ -186,11 +209,19 @@ impl FeedMonitor {
             network_error,
         };
         
-        if let Err(e) = repository.save(log).await {
-            warn!(
-                "Failed to save error log for feed {}: {}",
-                self.datafeed.name, e
-            );
+        match repository.save(log).await {
+            Ok(saved_log) => {
+                debug!(
+                    "Error log saved successfully for {} with id={}",
+                    self.datafeed.name, saved_log.id
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to save error log for feed {}: {}",
+                    self.datafeed.name, e
+                );
+            }
         }
     }
 }

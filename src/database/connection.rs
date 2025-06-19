@@ -1,7 +1,7 @@
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use std::env;
 use anyhow::{Context, Result};
-use tracing::info;
+use tracing::{info, debug};
 
 pub type DatabasePool = Pool<Postgres>;
 
@@ -11,6 +11,17 @@ pub async fn establish_connection() -> Result<DatabasePool> {
     let database_url = env::var("DATABASE_URL")
         .context("DATABASE_URL environment variable not set")?;
     
+    // Parse the database URL to extract connection details
+    let url_parts: Vec<&str> = database_url.split('@').collect();
+    let db_info = if url_parts.len() > 1 {
+        let host_and_db = url_parts[1];
+        // Mask sensitive parts of the URL for logging
+        format!("postgres://***@{}", host_and_db)
+    } else {
+        "postgres://***".to_string()
+    };
+    
+    debug!("Attempting to connect to database: {}", db_info);
     info!("Connecting to PostgreSQL database");
     
     // Create connection pool with sensible defaults
@@ -21,6 +32,14 @@ pub async fn establish_connection() -> Result<DatabasePool> {
         .await
         .context("Failed to create PostgreSQL connection pool")?;
     
+    // Test the connection and get some info
+    let (version,): (String,) = sqlx::query_as("SELECT version()")
+        .fetch_one(&pool)
+        .await
+        .context("Failed to verify database connection")?;
+    
+    debug!("Connected to database. PostgreSQL version: {}", version);
+    debug!("Connection pool created with max_connections=10, min_connections=2");
     info!("Successfully connected to PostgreSQL database");
     
     Ok(pool)
