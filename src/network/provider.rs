@@ -118,6 +118,11 @@ impl NetworkManager {
             })
     }
 
+    /// Get all configured network names
+    pub fn get_network_names(&self) -> Vec<String> {
+        self.providers.keys().cloned().collect()
+    }
+
     /// Create a provider from an RPC URL
     async fn create_provider(rpc_url: &str) -> Result<EthProvider> {
         let url = Url::parse(rpc_url)

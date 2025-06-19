@@ -40,6 +40,7 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
   - Error Recovery: Graceful handling of network errors and API failures
   - Historical Data Storage: Optional PostgreSQL database for feed value history
   - Automatic Cleanup: Configurable data retention with scheduled cleanup tasks
+  - Prometheus Metrics: Export comprehensive metrics for wallet balances, feed values, contract state, and deviations
   - Gas Consumption Tracking: Prometheus metrics and database logging for all transactions
   - Cost Analysis: Monitor gas efficiency and optimize transaction costs
 
@@ -120,6 +121,7 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
 
   - [Gas Configuration Guide](docs/gas-configuration.md) - Detailed guide for configuring gas settings, transaction types, and fee strategies
   - [Gas Monitoring Guide](docs/gas-monitoring.md) - Track gas consumption with Prometheus metrics and analyze costs
+  - [Prometheus Metrics Guide](docs/prometheus-metrics.md) - Complete reference for all exported metrics and monitoring setup
   - [Database Setup Guide](docs/database-setup.md) - PostgreSQL setup, data retention, and monitoring
   - [Configuration Reference](specs/configuration.md) - Complete configuration file specification
 

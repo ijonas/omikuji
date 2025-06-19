@@ -8,6 +8,7 @@ use crate::network::NetworkManager;
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::contracts::flux_aggregator::IFluxAggregator;
 use crate::database::TransactionLogRepository;
+use crate::metrics::FeedMetrics;
 use super::contract_utils::{
     parse_address, create_contract_with_provider, create_contract_with_signer,
     scale_value_for_contract, validate_value_bounds, current_timestamp, 
@@ -215,6 +216,10 @@ impl<'a> ContractUpdater<'a> {
                     "Successfully submitted value to contract. Tx hash: {:?}, Gas used: {:?}",
                     receipt.transaction_hash, receipt.gas_used
                 );
+                
+                // Record contract update in metrics
+                FeedMetrics::record_contract_update(&datafeed.name, &datafeed.networks);
+                
                 Ok(())
             }
             Err(e) => {
@@ -222,6 +227,66 @@ impl<'a> ContractUpdater<'a> {
                 Err(anyhow::anyhow!("{}: {}", errors::CONTRACT_SUBMISSION_FAILED, e))
             }
         }
+    }
+    
+    /// Read current contract state and update metrics
+    pub async fn update_contract_metrics(
+        &self,
+        datafeed: &Datafeed,
+        feed_value: f64,
+    ) -> Result<()> {
+        // Get contract instance
+        let contract = self.get_contract_for_read(datafeed).await?;
+        
+        // Get latest answer from contract
+        let latest_answer = contract
+            .latest_answer()
+            .call()
+            .await
+            .with_context(|| "Failed to get latest answer from contract")?;
+        
+        // Get latest timestamp
+        let latest_timestamp = contract
+            .latest_timestamp()
+            .call()
+            .await
+            .with_context(|| "Failed to get latest timestamp from contract")?;
+        
+        // Get latest round
+        let latest_round = contract
+            .latest_round()
+            .call()
+            .await
+            .with_context(|| "Failed to get latest round from contract")?;
+        
+        // Convert contract value from scaled integer to float
+        let decimals = datafeed.decimals.unwrap_or(8);
+        let divisor = 10f64.powi(decimals as i32);
+        let contract_value = latest_answer.as_i128() as f64 / divisor;
+        
+        // Update metrics
+        FeedMetrics::set_contract_value(
+            &datafeed.name,
+            &datafeed.networks,
+            contract_value,
+            latest_round.as_u64(),
+            latest_timestamp.as_u64(),
+        );
+        
+        // Calculate and update deviation
+        FeedMetrics::update_deviation(
+            &datafeed.name,
+            &datafeed.networks,
+            feed_value,
+            contract_value,
+        );
+        
+        debug!(
+            "Updated contract metrics for {}: value={}, round={}, timestamp={}",
+            datafeed.name, contract_value, latest_round, latest_timestamp
+        );
+        
+        Ok(())
     }
 }
 
