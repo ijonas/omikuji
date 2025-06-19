@@ -10,6 +10,7 @@ mod network;
 mod contracts;
 mod datafeed;
 mod gas;
+mod database;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -111,8 +112,53 @@ async fn main() -> Result<()> {
     // Now wrap in Arc for sharing across threads
     let network_manager = Arc::new(network_manager);
 
+    // Initialize database connection (optional - continues if not available)
+    let database_pool = match database::establish_connection().await {
+        Ok(pool) => {
+            info!("Database connection established");
+            
+            // Run migrations
+            if let Err(e) = database::connection::run_migrations(&pool).await {
+                error!("Failed to run database migrations: {}", e);
+                error!("Continuing without database support");
+                None
+            } else {
+                Some(pool)
+            }
+        }
+        Err(e) => {
+            error!("Failed to establish database connection: {}", e);
+            error!("Continuing without database logging");
+            None
+        }
+    };
+
+    // Initialize cleanup manager if database is available
+    let cleanup_manager = if let Some(ref pool) = database_pool {
+        let repository = Arc::new(database::FeedLogRepository::new(pool.clone()));
+        let mut cleanup_manager = database::cleanup::CleanupManager::new(
+            config.clone(),
+            repository
+        ).await?;
+        
+        // Start cleanup scheduler
+        if let Err(e) = cleanup_manager.start().await {
+            error!("Failed to start cleanup scheduler: {}", e);
+        }
+        
+        Some(cleanup_manager)
+    } else {
+        None
+    };
+
     // Initialize and start datafeed monitoring
-    let mut feed_manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager));
+    let mut feed_manager = if let Some(pool) = database_pool {
+        datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
+            .with_repository(pool)
+    } else {
+        datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
+    };
+    
     feed_manager.start().await;
 
     // TODO: Start the web interface
@@ -135,6 +181,13 @@ async fn main() -> Result<()> {
     // Keep the application running
     tokio::signal::ctrl_c().await?;
     info!("Received shutdown signal, stopping...");
+
+    // Stop cleanup manager if running
+    if let Some(mut cleanup_manager) = cleanup_manager {
+        if let Err(e) = cleanup_manager.stop().await {
+            error!("Error stopping cleanup manager: {}", e);
+        }
+    }
 
     Ok(())
 }

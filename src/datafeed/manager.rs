@@ -1,5 +1,6 @@
 use crate::config::models::{OmikujiConfig, Datafeed};
 use crate::network::NetworkManager;
+use crate::database::{FeedLogRepository, DatabasePool};
 use super::fetcher::Fetcher;
 use super::monitor::FeedMonitor;
 use super::contract_config::ContractConfigReader;
@@ -12,6 +13,7 @@ pub struct FeedManager {
     config: OmikujiConfig,
     network_manager: Arc<NetworkManager>,
     fetcher: Arc<Fetcher>,
+    repository: Option<Arc<FeedLogRepository>>,
     handles: Vec<JoinHandle<()>>,
 }
 
@@ -22,8 +24,15 @@ impl FeedManager {
             config,
             network_manager,
             fetcher: Arc::new(Fetcher::new()),
+            repository: None,
             handles: Vec::new(),
         }
+    }
+    
+    /// Sets the database repository for feed logging
+    pub fn with_repository(mut self, pool: DatabasePool) -> Self {
+        self.repository = Some(Arc::new(FeedLogRepository::new(pool)));
+        self
     }
     
     /// Starts monitoring all configured datafeeds
@@ -126,7 +135,8 @@ impl FeedManager {
             datafeed.clone(), 
             Arc::clone(&self.fetcher),
             Arc::clone(&self.network_manager),
-            self.config.clone()
+            self.config.clone(),
+            self.repository.clone()
         );
         let feed_name = datafeed.name.clone();
         

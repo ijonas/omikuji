@@ -3,4 +3,4 @@ pub mod estimator;
 #[cfg(test)]
 mod tests;
 
-pub use estimator::{GasEstimator, GasEstimate};
+pub use estimator::GasEstimate;
