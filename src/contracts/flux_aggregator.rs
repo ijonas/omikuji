@@ -3,8 +3,11 @@ use ethers::types::transaction::eip2718::TypedTransaction;
 use ethers::utils::parse_units;
 use crate::gas::GasEstimate;
 use crate::config::models::{Network, GasConfig, FeeBumpingConfig};
+use crate::metrics::gas_metrics::{GasMetrics, TransactionDetails};
+use crate::database::TransactionLogRepository;
 use tracing::{info, warn, error};
 use tokio::time::{sleep, Duration};
+use std::sync::Arc;
 
 // We use ethers-rs abigen macro to create Rust bindings from Solidity ABI
 // This generates Rust code for interacting with the FluxAggregator contract
@@ -37,6 +40,8 @@ impl<M: Middleware> IFluxAggregator<M> {
     /// * `round_id` - The round ID to submit the price for
     /// * `price` - The price to submit
     /// * `network_config` - Network configuration for gas settings
+    /// * `feed_name` - Name of the feed for logging
+    /// * `tx_log_repo` - Optional transaction log repository
     ///
     /// # Returns
     /// The transaction receipt
@@ -45,6 +50,8 @@ impl<M: Middleware> IFluxAggregator<M> {
         round_id: U256,
         price: I256,
         network_config: &Network,
+        feed_name: &str,
+        tx_log_repo: Option<Arc<TransactionLogRepository>>,
     ) -> Result<TransactionReceipt, ContractError<M>> {
         // Create the base transaction call
         let contract_call = self.submit(round_id, price);
@@ -97,7 +104,14 @@ impl<M: Middleware> IFluxAggregator<M> {
         }
 
         // Send transaction with retry logic
-        self.send_with_retry(typed_tx, &gas_estimate, &network_config.gas_config).await
+        self.send_with_retry(
+            typed_tx, 
+            &gas_estimate, 
+            &network_config.gas_config,
+            feed_name,
+            &network_config.name,
+            tx_log_repo,
+        ).await
     }
 
     /// Legacy submit_price method for backwards compatibility
@@ -211,6 +225,9 @@ impl<M: Middleware> IFluxAggregator<M> {
         mut tx: TypedTransaction,
         original_estimate: &GasEstimate,
         gas_config: &GasConfig,
+        feed_name: &str,
+        network_name: &str,
+        tx_log_repo: Option<Arc<TransactionLogRepository>>,
     ) -> Result<TransactionReceipt, ContractError<M>> {
         let mut retry_count = 0;
         let mut current_estimate = original_estimate.clone();
@@ -224,6 +241,31 @@ impl<M: Middleware> IFluxAggregator<M> {
                 Ok(tx) => tx,
                 Err(e) => {
                     error!("Failed to send transaction: {}", e);
+                    
+                    // Determine transaction type
+                    let tx_type = match &tx {
+                        TypedTransaction::Legacy(_) => "legacy",
+                        TypedTransaction::Eip1559(_) => "eip1559",
+                        _ => "unknown",
+                    };
+                    
+                    // Get estimated gas price for logging
+                    let estimated_gas_price = match &tx {
+                        TypedTransaction::Legacy(ref legacy_tx) => legacy_tx.gas_price,
+                        TypedTransaction::Eip1559(ref eip1559_tx) => eip1559_tx.max_fee_per_gas,
+                        _ => None,
+                    };
+                    
+                    // Record failed transaction metrics
+                    GasMetrics::record_failed_transaction(
+                        feed_name,
+                        network_name,
+                        current_estimate.gas_limit,
+                        estimated_gas_price,
+                        tx_type,
+                        &e.to_string(),
+                    );
+                    
                     return Err(ContractError::from(ProviderError::CustomError(e.to_string())));
                 }
             };
@@ -241,6 +283,54 @@ impl<M: Middleware> IFluxAggregator<M> {
                 Ok(Ok(Some(receipt))) => {
                     info!("Transaction confirmed: {:?}, gas used: {:?}", 
                         receipt.transaction_hash, receipt.gas_used);
+                    
+                    // Determine transaction type
+                    let tx_type = match &tx {
+                        TypedTransaction::Legacy(_) => "legacy",
+                        TypedTransaction::Eip1559(_) => "eip1559",
+                        _ => "unknown",
+                    };
+                    
+                    // Record gas metrics
+                    GasMetrics::record_transaction(
+                        feed_name,
+                        network_name,
+                        &receipt,
+                        current_estimate.gas_limit,
+                        tx_type,
+                    );
+                    
+                    // Save to database if repository available
+                    if let Some(repo) = tx_log_repo.as_ref() {
+                        let gas_used = receipt.gas_used.unwrap_or_default();
+                        let effective_gas_price = receipt.effective_gas_price.unwrap_or_default();
+                        let total_cost_wei = gas_used.saturating_mul(effective_gas_price);
+                        let efficiency_percent = if current_estimate.gas_limit > U256::zero() {
+                            (gas_used.as_u64() as f64 / current_estimate.gas_limit.as_u64() as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        
+                        let tx_details = TransactionDetails {
+                            feed_name: feed_name.to_string(),
+                            network: network_name.to_string(),
+                            tx_hash: format!("{:?}", receipt.transaction_hash),
+                            gas_limit: current_estimate.gas_limit.as_u64(),
+                            gas_used: gas_used.as_u64(),
+                            gas_price_gwei: effective_gas_price.as_u128() as f64 / 1e9,
+                            total_cost_wei: total_cost_wei.as_u128(),
+                            efficiency_percent,
+                            status: if receipt.status == Some(1.into()) { "success".to_string() } else { "failed".to_string() },
+                            tx_type: tx_type.to_string(),
+                            block_number: receipt.block_number.unwrap_or_default().as_u64(),
+                            error_message: None,
+                        };
+                        
+                        if let Err(e) = repo.save_transaction(tx_details).await {
+                            error!("Failed to save transaction log: {}", e);
+                        }
+                    }
+                    
                     return Ok(receipt);
                 }
                 Ok(Ok(None)) => {

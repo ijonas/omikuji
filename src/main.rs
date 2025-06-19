@@ -11,6 +11,7 @@ mod contracts;
 mod datafeed;
 mod gas;
 mod database;
+mod metrics;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -161,7 +162,13 @@ async fn main() -> Result<()> {
     
     feed_manager.start().await;
 
-    // TODO: Start the web interface
+    // Start Prometheus metrics server
+    if let Err(e) = metrics::start_metrics_server(9090).await {
+        error!("Failed to start metrics server: {}", e);
+        error!("Continuing without metrics endpoint");
+    } else {
+        info!("Prometheus metrics available at http://0.0.0.0:9090/metrics");
+    }
 
     info!("Omikuji starting up...");
 

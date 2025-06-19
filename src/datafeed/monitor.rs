@@ -1,6 +1,6 @@
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::network::NetworkManager;
-use crate::database::FeedLogRepository;
+use crate::database::{FeedLogRepository, TransactionLogRepository};
 use crate::database::models::NewFeedLog;
 use super::fetcher::Fetcher;
 use super::json_extractor::JsonExtractor;
@@ -17,6 +17,7 @@ pub struct FeedMonitor {
     network_manager: Arc<NetworkManager>,
     config: OmikujiConfig,
     repository: Option<Arc<FeedLogRepository>>,
+    tx_log_repo: Option<Arc<TransactionLogRepository>>,
 }
 
 impl FeedMonitor {
@@ -27,8 +28,9 @@ impl FeedMonitor {
         network_manager: Arc<NetworkManager>, 
         config: OmikujiConfig,
         repository: Option<Arc<FeedLogRepository>>,
+        tx_log_repo: Option<Arc<TransactionLogRepository>>,
     ) -> Self {
-        Self { datafeed, fetcher, network_manager, config, repository }
+        Self { datafeed, fetcher, network_manager, config, repository, tx_log_repo }
     }
     
     /// Starts monitoring the datafeed
@@ -113,7 +115,11 @@ impl FeedMonitor {
     
     /// Checks if contract update is needed and submits if necessary
     async fn check_and_update_contract(&self, value: f64) -> Result<()> {
-        let updater = ContractUpdater::new(&self.network_manager, &self.config);
+        let updater = if let Some(ref tx_repo) = self.tx_log_repo {
+            ContractUpdater::with_tx_logging(&self.network_manager, &self.config, tx_repo.clone())
+        } else {
+            ContractUpdater::new(&self.network_manager, &self.config)
+        };
         
         // Check if update is needed
         let (should_update, reason) = updater.check_update_needed(&self.datafeed, value).await?;
