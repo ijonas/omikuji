@@ -305,8 +305,8 @@ mod tests {
             contract_type: "fluxmon".to_string(),
             read_contract_config: false,
             decimals: Some(8),
-            min_value: Some(-1000000000),
-            max_value: Some(1000000000),
+            min_value: Some(I256::from(-1000000000)),
+            max_value: Some(I256::from(1000000000)),
             minimum_update_frequency: 3600, // 1 hour
             deviation_threshold_pct: 0.5,
             feed_url: "http://example.com/api".to_string(),
@@ -329,8 +329,8 @@ mod tests {
     #[test]
     fn test_value_bounds_validation() {
         let mut datafeed = create_test_datafeed();
-        datafeed.min_value = Some(100000000); // 1.0 with 8 decimals
-        datafeed.max_value = Some(1000000000000); // 10000.0 with 8 decimals
+        datafeed.min_value = Some(I256::from(100000000)); // 1.0 with 8 decimals
+        datafeed.max_value = Some(I256::from(1000000000000i64)); // 10000.0 with 8 decimals
         
         let decimals = datafeed.decimals.unwrap_or(8);
         let multiplier = 10f64.powi(decimals as i32);
@@ -338,18 +338,18 @@ mod tests {
         // Test value below minimum
         let low_value = 0.5;
         let scaled_low = (low_value * multiplier).round() as i128;
-        assert!(scaled_low < datafeed.min_value.unwrap() as i128);
+        assert!(I256::from(scaled_low) < datafeed.min_value.unwrap());
         
         // Test value above maximum
         let high_value = 20000.0;
         let scaled_high = (high_value * multiplier).round() as i128;
-        assert!(scaled_high > datafeed.max_value.unwrap() as i128);
+        assert!(I256::from(scaled_high) > datafeed.max_value.unwrap());
         
         // Test value within bounds
         let normal_value = 1000.0;
         let scaled_normal = (normal_value * multiplier).round() as i128;
-        assert!(scaled_normal >= datafeed.min_value.unwrap() as i128);
-        assert!(scaled_normal <= datafeed.max_value.unwrap() as i128);
+        assert!(I256::from(scaled_normal) >= datafeed.min_value.unwrap());
+        assert!(I256::from(scaled_normal) <= datafeed.max_value.unwrap());
     }
 
     #[test]

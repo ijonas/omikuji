@@ -45,8 +45,11 @@ pub fn validate_value_bounds(
     scaled_value: i128,
     datafeed: &Datafeed,
 ) -> Result<()> {
-    if let Some(min_value) = datafeed.min_value {
-        if scaled_value < min_value as i128 {
+    // Convert scaled_value to I256 for comparison
+    let scaled_value_i256 = I256::from(scaled_value);
+    
+    if let Some(ref min_value) = datafeed.min_value {
+        if scaled_value_i256 < *min_value {
             warn!(
                 "Value {} is below minimum {} for datafeed {}",
                 scaled_value, min_value, datafeed.name
@@ -55,8 +58,8 @@ pub fn validate_value_bounds(
         }
     }
     
-    if let Some(max_value) = datafeed.max_value {
-        if scaled_value > max_value as i128 {
+    if let Some(ref max_value) = datafeed.max_value {
+        if scaled_value_i256 > *max_value {
             warn!(
                 "Value {} is above maximum {} for datafeed {}",
                 scaled_value, max_value, datafeed.name

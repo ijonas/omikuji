@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
+use ethers::types::I256;
 
 /// The main configuration structure for Omikuji
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -211,10 +212,10 @@ pub struct Datafeed {
     pub decimals: Option<u8>,
 
     /// Minimum valid value (optional, used when read_contract_config is false)
-    pub min_value: Option<i64>,
+    pub min_value: Option<I256>,
 
     /// Maximum valid value (optional, used when read_contract_config is false)
-    pub max_value: Option<i64>,
+    pub max_value: Option<I256>,
 
     /// Data retention window in days (default: 7)
     #[serde(default = "default_data_retention_days")]
