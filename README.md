@@ -52,6 +52,60 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
   - PostgreSQL 12+ (optional, for historical data storage)
 
 
+## 📥 Installation
+
+### Binary Installation
+
+Download pre-built binaries for your platform from the [latest release](https://github.com/ijonas/omikuji/releases/latest):
+
+```bash
+# Linux x64
+wget https://github.com/ijonas/omikuji/releases/latest/download/omikuji-linux-x64
+chmod +x omikuji-linux-x64
+sudo mv omikuji-linux-x64 /usr/local/bin/omikuji
+
+# macOS (Intel)
+wget https://github.com/ijonas/omikuji/releases/latest/download/omikuji-macos-x64
+chmod +x omikuji-macos-x64
+sudo mv omikuji-macos-x64 /usr/local/bin/omikuji
+
+# macOS (Apple Silicon)
+wget https://github.com/ijonas/omikuji/releases/latest/download/omikuji-macos-arm64
+chmod +x omikuji-macos-arm64
+sudo mv omikuji-macos-arm64 /usr/local/bin/omikuji
+```
+
+Verify the checksum:
+```bash
+wget https://github.com/ijonas/omikuji/releases/latest/download/checksums.txt
+sha256sum -c checksums.txt --ignore-missing
+```
+
+### Docker Installation
+
+Pull the latest Docker image:
+
+```bash
+docker pull ghcr.io/ijonas/omikuji:latest
+```
+
+Run with your config file:
+
+```bash
+docker run -v $(pwd)/config.yaml:/config/config.yaml \
+           -e OMIKUJI_PRIVATE_KEY=$OMIKUJI_PRIVATE_KEY \
+           ghcr.io/ijonas/omikuji:latest
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/ijonas/omikuji.git
+cd omikuji
+cargo build --release
+sudo mv target/release/omikuji /usr/local/bin/
+```
+
 ## 🚀 Getting Started
 
   1. Create a configuration file (default: config.yaml):
@@ -90,7 +144,7 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
 
   - Language: Rust
   - Async Runtime: Tokio
-  - Blockchain Library: ethers-rs
+  - Blockchain Library: alloy-rs
   - Configuration Format: YAML
   - Supported Contract Types: Chainlink FluxAggregator
   - Update Precision: Configurable decimals (0-18)
