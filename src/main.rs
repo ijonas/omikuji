@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use tracing::{error, info, debug};
+use tracing_subscriber::prelude::*; // <-- Import this trait to enable .with() for registry()
 
 mod config;
 mod network;
@@ -46,7 +47,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Initialize logging after argument parsing
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init(); // REMOVE this line to avoid double global subscriber
     
     // Load .env file if it exists
     match dotenv::dotenv() {
@@ -209,9 +210,46 @@ async fn main() -> Result<()> {
         }
     }
 
-    // If TUI mode is enabled, start the dashboard and exit after
+    // --- TUI Dashboard Integration ---
+    use tui::{DashboardState, FeedStatus, NetworkStatus, MetricsState, LogLevel, setup_log_channel_layer, start_tui_dashboard_with_state};
+    use tokio::sync::{mpsc, RwLock};
+    let (log_tx, log_rx) = mpsc::channel(1000);
+    let dashboard = Arc::new(RwLock::new(DashboardState::default()));
+    let log_layer = setup_log_channel_layer(log_tx.clone());
+    tracing_subscriber::registry().with(log_layer).init();
+
+    // If TUI mode is enabled, launch the dashboard and update state in background
     if args.tui {
-        return tui::start_tui_dashboard().await.map_err(|e: std::io::Error| anyhow::anyhow!(e));
+        // Example: spawn a task to update dashboard state with dummy data (replace with real updates)
+        let dash = dashboard.clone();
+        tokio::spawn(async move {
+            loop {
+                {
+                    let mut d = dash.write().await;
+                    d.metrics.feed_count = 2;
+                    d.metrics.error_count = 0;
+                    d.metrics.tx_count += 1;
+                    d.metrics.last_tx_cost = Some(0.0012);
+                    d.feeds = vec![FeedStatus {
+                        name: "eth_usd".to_string(),
+                        last_value: "3450.12".to_string(),
+                        last_update: std::time::Instant::now(),
+                        next_update: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                        error: None,
+                    }];
+                    d.networks = vec![NetworkStatus {
+                        name: "arbsepolia".to_string(),
+                        rpc_ok: true,
+                        chain_id: Some(421614),
+                        block_number: Some(12345678),
+                        wallet_status: "OK".to_string(),
+                    }];
+                    d.alerts = vec!["No errors".to_string()];
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        });
+        return start_tui_dashboard_with_state(dashboard, log_rx).await.map_err(|e| anyhow::anyhow!(e));
     }
 
     // Keep the application running
