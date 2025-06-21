@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
-use ethers::prelude::*;
+use alloy::{
+    network::{EthereumWallet, Ethereum},
+    primitives::Address,
+    providers::{Provider, ProviderBuilder, RootProvider},
+    signers::local::PrivateKeySigner,
+    transports::{http::{Client, Http}, Transport},
+};
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use url::Url;
 
 use crate::config::models::Network;
@@ -17,30 +22,37 @@ pub enum NetworkError {
     NetworkNotFound(String),
 
     #[error("Provider error: {0}")]
-    ProviderError(#[from] ProviderError),
+    ProviderError(String),
 
     #[error("RPC connection failed: {0}")]
     ConnectionFailed(String),
 }
 
-/// Type alias for the ethers-rs provider we will use
-pub type EthProvider = Provider<Http>;
+/// Type alias for the alloy provider we will use
+pub type EthProvider = RootProvider<Http<Client>>;
 
 /// Manages the connections to different EVM networks
-#[derive(Debug)]
 pub struct NetworkManager {
     /// Map of network name to provider
     providers: HashMap<String, Arc<EthProvider>>,
     
-    /// Signers for each network, keyed by network name
-    signers: HashMap<String, Arc<SignerMiddleware<Arc<EthProvider>, LocalWallet>>>,
+    /// Private keys for each network (stored securely)
+    private_keys: HashMap<String, String>,
+    
+    /// RPC URLs for each network (needed for creating signed providers)
+    rpc_urls: HashMap<String, String>,
+    
+    /// Wallet addresses for each network
+    wallet_addresses: HashMap<String, Address>,
 }
 
 impl NetworkManager {
     /// Create a new network manager from a list of network configurations
     pub async fn new(networks: &[Network]) -> Result<Self> {
         let mut providers = HashMap::new();
-        let signers = HashMap::new();
+        let private_keys = HashMap::new();
+        let mut rpc_urls = HashMap::new();
+        let wallet_addresses = HashMap::new();
 
         for network in networks {
             let provider = Self::create_provider(&network.rpc_url)
@@ -48,33 +60,44 @@ impl NetworkManager {
                 .with_context(|| format!("Failed to create provider for network {}", network.name))?;
             
             providers.insert(network.name.clone(), Arc::new(provider));
+            rpc_urls.insert(network.name.clone(), network.rpc_url.clone());
         }
 
         Ok(Self {
             providers,
-            signers,
+            private_keys,
+            rpc_urls,
+            wallet_addresses,
         })
     }
 
     /// Load a wallet from an environment variable
     pub async fn load_wallet_from_env(&mut self, network_name: &str, env_var: &str) -> Result<()> {
-        let provider = self.get_provider(network_name)?;
-
+        info!("Attempting to load wallet for network {} from env var {}", network_name, env_var);
+        
+        // Check if the network exists
+        if !self.providers.contains_key(network_name) {
+            return Err(NetworkError::NetworkNotFound(network_name.to_string()).into());
+        }
+        
         let private_key = std::env::var(env_var)
             .with_context(|| format!("Environment variable {} not found", env_var))?;
+        
+        info!("Successfully read private key from env var {} (length: {})", env_var, private_key.len());
 
-        let wallet = private_key
-            .parse::<LocalWallet>()
-            .with_context(|| "Failed to parse private key as wallet")?;
+        let signer = private_key
+            .parse::<PrivateKeySigner>()
+            .with_context(|| "Failed to parse private key as signer")?;
 
-        let chain_id = self.get_chain_id(network_name).await?;
-        let wallet = wallet.with_chain_id(chain_id);
+        // Store the wallet address
+        let wallet_address = signer.address();
+        self.wallet_addresses.insert(network_name.to_string(), wallet_address);
+        
+        // Store the private key (we'll create providers with wallets on demand)
+        self.private_keys.insert(network_name.to_string(), private_key);
 
-        debug!("Loaded wallet for network {}", network_name);
-
-        let signer = SignerMiddleware::new(provider.clone(), wallet);
-        self.signers.insert(network_name.to_string(), Arc::new(signer));
-
+        info!("Successfully loaded wallet for network {} with address {}", network_name, wallet_address);
+        
         Ok(())
     }
 
@@ -82,11 +105,11 @@ impl NetworkManager {
     pub async fn get_chain_id(&self, network_name: &str) -> Result<u64> {
         let provider = self.get_provider(network_name)?;
         let chain_id = provider
-            .get_chainid()
+            .get_chain_id()
             .await
             .with_context(|| format!("Failed to get chain ID for network {}", network_name))?;
         
-        Ok(chain_id.as_u64())
+        Ok(chain_id)
     }
 
     /// Get the block number for a given network
@@ -97,7 +120,7 @@ impl NetworkManager {
             .await
             .with_context(|| format!("Failed to get block number for network {}", network_name))?;
         
-        Ok(block_number.as_u64())
+        Ok(block_number)
     }
 
     /// Get a provider for a given network
@@ -108,14 +131,31 @@ impl NetworkManager {
             .ok_or_else(|| NetworkError::NetworkNotFound(network_name.to_string()).into())
     }
 
-    /// Get a signer for a given network
-    pub fn get_signer(&self, network_name: &str) -> Result<Arc<SignerMiddleware<Arc<EthProvider>, LocalWallet>>> {
-        self.signers
+    /// Get the private key for a network
+    pub fn get_private_key(&self, network_name: &str) -> Result<String> {
+        self.private_keys
             .get(network_name)
             .cloned()
-            .ok_or_else(|| {
-                anyhow::anyhow!("No signer found for network {}. Call load_wallet_from_env first", network_name)
-            })
+            .ok_or_else(|| anyhow::anyhow!("No private key found for network {}. Call load_wallet_from_env first", network_name))
+    }
+    
+    /// Get the RPC URL for a network
+    pub fn get_rpc_url(&self, network_name: &str) -> Result<&str> {
+        self.rpc_urls
+            .get(network_name)
+            .map(|s| s.as_str())
+            .ok_or_else(|| NetworkError::NetworkNotFound(network_name.to_string()).into())
+    }
+    
+    /// Get a signer for a given network
+    pub fn get_signer(&self, network_name: &str) -> Result<Arc<EthProvider>> {
+        // For backward compatibility, check if we have a private key
+        if self.private_keys.contains_key(network_name) {
+            // Return the regular provider - the actual signing will be handled differently
+            self.get_provider(network_name)
+        } else {
+            Err(anyhow::anyhow!("No signer found for network {}. Call load_wallet_from_env first", network_name))
+        }
     }
 
     /// Get all configured network names
@@ -123,16 +163,23 @@ impl NetworkManager {
         self.providers.keys().cloned().collect()
     }
 
+    /// Get the wallet address for a given network
+    pub fn get_wallet_address(&self, network_name: &str) -> Result<Address> {
+        self.wallet_addresses
+            .get(network_name)
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!("No wallet address found for network {}. Call load_wallet_from_env first", network_name)
+            })
+    }
+
     /// Create a provider from an RPC URL
     async fn create_provider(rpc_url: &str) -> Result<EthProvider> {
         let url = Url::parse(rpc_url)
             .with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
 
-        let http_provider = Http::new(url);
-        let mut provider = Provider::new(http_provider);
-
-        // Configure timeouts for the provider
-        provider.set_interval(Duration::from_millis(2000));
+        let provider = ProviderBuilder::new()
+            .on_http(url);
 
         // Test connection by getting the current block number
         match provider.get_block_number().await {

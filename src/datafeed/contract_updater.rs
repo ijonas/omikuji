@@ -1,16 +1,22 @@
 use anyhow::{Context, Result};
-use ethers::prelude::*;
-use ethers::signers::LocalWallet;
+use alloy::{
+    primitives::{I256, U256},
+    providers::{Provider, ProviderBuilder, RootProvider},
+    signers::local::PrivateKeySigner,
+    network::{Ethereum, EthereumWallet},
+    transports::http::{Client, Http},
+};
 use std::sync::Arc;
 use tracing::{info, error, debug};
+use url::Url;
 
 use crate::network::NetworkManager;
 use crate::config::models::{Datafeed, OmikujiConfig};
-use crate::contracts::flux_aggregator::IFluxAggregator;
+use crate::contracts::FluxAggregatorContract;
 use crate::database::TransactionLogRepository;
 use crate::metrics::FeedMetrics;
 use super::contract_utils::{
-    parse_address, create_contract_with_provider, create_contract_with_signer,
+    parse_address, create_contract_with_provider,
     scale_value_for_contract, validate_value_bounds, current_timestamp, 
     calculate_deviation_percentage, errors
 };
@@ -46,20 +52,40 @@ impl<'a> ContractUpdater<'a> {
     }
     
     /// Gets a contract instance with provider for read operations
-    async fn get_contract_for_read(&self, datafeed: &Datafeed) -> Result<IFluxAggregator<Provider<Http>>> {
+    async fn get_contract_for_read(&self, datafeed: &Datafeed) -> Result<FluxAggregatorContract<Http<Client>, RootProvider<Http<Client>>>> {
         let provider = self.network_manager
             .get_provider(&datafeed.networks)?;
         let address = parse_address(&datafeed.contract_address)?;
-        Ok(create_contract_with_provider(address, provider))
+        Ok(create_contract_with_provider(address, provider.as_ref().clone()))
     }
     
-    /// Gets a contract instance with signer for write operations
-    async fn get_contract_for_write(&self, datafeed: &Datafeed) -> Result<IFluxAggregator<SignerMiddleware<Arc<Provider<Http>>, LocalWallet>>> {
-        let signer = self.network_manager
-            .get_signer(&datafeed.networks)
-            .with_context(|| format!("{} {}", errors::NO_SIGNER_AVAILABLE, datafeed.networks))?;
-        let address = parse_address(&datafeed.contract_address)?;
-        Ok(create_contract_with_signer(address, signer))
+    /// Creates a provider with signer for write operations
+    async fn create_signer_provider(&self, network_name: &str) -> Result<impl Provider<Http<Client>, Ethereum> + Clone> {
+        // Get the private key and RPC URL
+        let private_key = self.network_manager
+            .get_private_key(network_name)
+            .with_context(|| format!("{} {}", errors::NO_SIGNER_AVAILABLE, network_name))?;
+        
+        let rpc_url = self.network_manager
+            .get_rpc_url(network_name)?;
+        
+        // Parse the private key
+        let signer = private_key
+            .parse::<PrivateKeySigner>()
+            .with_context(|| "Failed to parse private key as signer")?;
+        
+        let wallet = EthereumWallet::from(signer);
+        
+        // Create a provider with wallet
+        let url = Url::parse(rpc_url)
+            .with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
+        
+        let provider_with_wallet = ProviderBuilder::new()
+            .with_recommended_fillers()
+            .wallet(wallet)
+            .on_http(url);
+        
+        Ok(provider_with_wallet)
     }
     
     /// Checks if a contract update is needed based on time elapsed
@@ -74,13 +100,12 @@ impl<'a> ContractUpdater<'a> {
         // Get latest timestamp from contract
         let latest_timestamp = contract
             .latest_timestamp()
-            .call()
             .await
             .with_context(|| "Failed to get latest timestamp from contract")?;
         
         // Get current timestamp
         let now = current_timestamp()?;
-        let time_since_update = now.saturating_sub(latest_timestamp.as_u64());
+        let time_since_update = now.saturating_sub(latest_timestamp.to::<u64>());
         
         debug!(
             "Datafeed {}: last update {}s ago, minimum frequency {}s",
@@ -103,7 +128,7 @@ impl<'a> ContractUpdater<'a> {
         let contract = self.get_contract_for_read(datafeed).await?;
         
         // Get latest answer from contract
-        let latest_answer = match contract.latest_answer().call().await {
+        let latest_answer = match contract.latest_answer().await {
             Ok(answer) => answer,
             Err(e) => {
                 error!(
@@ -119,7 +144,8 @@ impl<'a> ContractUpdater<'a> {
         let scaled_new_value = scale_value_for_contract(new_value, decimals);
         
         // Convert I256 to i128 for comparison
-        let current_value = latest_answer.as_i128();
+        let current_value = latest_answer.try_into()
+            .context("Failed to convert latest answer to i128")?;
         
         // Calculate deviation percentage
         let deviation = calculate_deviation_percentage(current_value, scaled_new_value);
@@ -173,17 +199,20 @@ impl<'a> ContractUpdater<'a> {
             value, datafeed.contract_address, datafeed.networks
         );
         
-        // Get contract instance with signer
-        let contract = self.get_contract_for_write(datafeed).await?;
+        // Create provider with signer
+        let provider = self.create_signer_provider(&datafeed.networks).await?;
+        
+        // Create contract instance with the signing provider
+        let address = parse_address(&datafeed.contract_address)?;
+        let contract = create_contract_with_provider(address, provider);
         
         // Get current round ID
         let latest_round = contract
             .latest_round()
-            .call()
             .await
             .with_context(|| "Failed to get latest round from contract")?;
         
-        let next_round = latest_round + 1;
+        let next_round = latest_round + U256::from(1);
         
         // Convert value to contract format
         let decimals = datafeed.decimals.unwrap_or(8);
@@ -193,7 +222,8 @@ impl<'a> ContractUpdater<'a> {
         validate_value_bounds(scaled_value, datafeed)?;
         
         // Convert to I256 for contract
-        let submission = I256::from(scaled_value);
+        let submission = I256::try_from(scaled_value)
+            .context("Failed to convert scaled value to I256")?;
         
         info!(
             "Submitting to round {} with value {} (scaled from {})",
@@ -203,6 +233,11 @@ impl<'a> ContractUpdater<'a> {
         // Get network configuration for gas settings
         let network_config = self.get_network_config(datafeed)?;
         
+        // Get wallet address for gas estimation
+        let wallet_address = self.network_manager
+            .get_wallet_address(&datafeed.networks)
+            .ok(); // It's optional, so we use ok() to convert Result to Option
+        
         // Submit the transaction with gas estimation
         match contract.submit_price_with_gas_estimation(
             next_round, 
@@ -210,10 +245,11 @@ impl<'a> ContractUpdater<'a> {
             network_config,
             &datafeed.name,
             self.tx_log_repo.clone(),
+            wallet_address,
         ).await {
             Ok(receipt) => {
                 info!(
-                    "Successfully submitted value to contract. Tx hash: {:?}, Gas used: {:?}",
+                    "Successfully submitted value to contract. Tx hash: 0x{:x}, Gas used: {}",
                     receipt.transaction_hash, receipt.gas_used
                 );
                 
@@ -241,36 +277,35 @@ impl<'a> ContractUpdater<'a> {
         // Get latest answer from contract
         let latest_answer = contract
             .latest_answer()
-            .call()
             .await
             .with_context(|| "Failed to get latest answer from contract")?;
         
         // Get latest timestamp
         let latest_timestamp = contract
             .latest_timestamp()
-            .call()
             .await
             .with_context(|| "Failed to get latest timestamp from contract")?;
         
         // Get latest round
         let latest_round = contract
             .latest_round()
-            .call()
             .await
             .with_context(|| "Failed to get latest round from contract")?;
         
         // Convert contract value from scaled integer to float
         let decimals = datafeed.decimals.unwrap_or(8);
         let divisor = 10f64.powi(decimals as i32);
-        let contract_value = latest_answer.as_i128() as f64 / divisor;
+        let answer_i128: i128 = latest_answer.try_into()
+            .context("Failed to convert latest answer to i128")?;
+        let contract_value = answer_i128 as f64 / divisor;
         
         // Update metrics
         FeedMetrics::set_contract_value(
             &datafeed.name,
             &datafeed.networks,
             contract_value,
-            latest_round.as_u64(),
-            latest_timestamp.as_u64(),
+            latest_round.to::<u64>(),
+            latest_timestamp.to::<u64>(),
         );
         
         // Calculate and update deviation
@@ -305,8 +340,8 @@ mod tests {
             contract_type: "fluxmon".to_string(),
             read_contract_config: false,
             decimals: Some(8),
-            min_value: Some(I256::from(-1000000000)),
-            max_value: Some(I256::from(1000000000)),
+            min_value: Some(I256::try_from(-1000000000).unwrap()),
+            max_value: Some(I256::try_from(1000000000).unwrap()),
             minimum_update_frequency: 3600, // 1 hour
             deviation_threshold_pct: 0.5,
             feed_url: "http://example.com/api".to_string(),
@@ -329,8 +364,8 @@ mod tests {
     #[test]
     fn test_value_bounds_validation() {
         let mut datafeed = create_test_datafeed();
-        datafeed.min_value = Some(I256::from(100000000)); // 1.0 with 8 decimals
-        datafeed.max_value = Some(I256::from(1000000000000i64)); // 10000.0 with 8 decimals
+        datafeed.min_value = Some(I256::try_from(100000000).unwrap()); // 1.0 with 8 decimals
+        datafeed.max_value = Some(I256::try_from(1000000000000i64).unwrap()); // 10000.0 with 8 decimals
         
         let decimals = datafeed.decimals.unwrap_or(8);
         let multiplier = 10f64.powi(decimals as i32);
@@ -338,18 +373,18 @@ mod tests {
         // Test value below minimum
         let low_value = 0.5;
         let scaled_low = (low_value * multiplier).round() as i128;
-        assert!(I256::from(scaled_low) < datafeed.min_value.unwrap());
+        assert!(I256::try_from(scaled_low).unwrap() < datafeed.min_value.unwrap());
         
         // Test value above maximum
         let high_value = 20000.0;
         let scaled_high = (high_value * multiplier).round() as i128;
-        assert!(I256::from(scaled_high) > datafeed.max_value.unwrap());
+        assert!(I256::try_from(scaled_high).unwrap() > datafeed.max_value.unwrap());
         
         // Test value within bounds
         let normal_value = 1000.0;
         let scaled_normal = (normal_value * multiplier).round() as i128;
-        assert!(I256::from(scaled_normal) >= datafeed.min_value.unwrap());
-        assert!(I256::from(scaled_normal) <= datafeed.max_value.unwrap());
+        assert!(I256::try_from(scaled_normal).unwrap() >= datafeed.min_value.unwrap());
+        assert!(I256::try_from(scaled_normal).unwrap() <= datafeed.max_value.unwrap());
     }
 
     #[test]

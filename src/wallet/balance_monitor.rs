@@ -1,6 +1,6 @@
 use crate::network::NetworkManager;
 use crate::metrics::FeedMetrics;
-use ethers::prelude::*;
+use alloy::primitives::utils::format_units;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{info, error, debug};
@@ -52,17 +52,17 @@ impl WalletBalanceMonitor {
 
     /// Update balance for a specific network
     async fn update_network_balance(&self, network_name: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Get the signer for this network (which contains the wallet)
-        let signer = self.network_manager.get_signer(network_name)?;
-        let address = signer.address();
+        // Get the wallet address for this network
+        let address = self.network_manager.get_wallet_address(network_name)?;
         
         // Get the provider to query balance
         let provider = self.network_manager.get_provider(network_name)?;
         
-        // Fetch the balance
-        match provider.get_balance(address, None).await {
+        // Fetch the balance  
+        use alloy::providers::Provider;
+        match provider.get_balance(address).await {
             Ok(balance) => {
-                let balance_wei = balance.as_u128();
+                let balance_wei = balance.to::<u128>();
                 
                 // Update Prometheus metric
                 FeedMetrics::set_wallet_balance(
@@ -76,7 +76,7 @@ impl WalletBalanceMonitor {
                     address,
                     network_name,
                     balance_wei,
-                    ethers::utils::format_ether(balance)
+                    format_units(balance, "ether").unwrap_or_else(|_| "error".to_string())
                 );
                 
                 Ok(())

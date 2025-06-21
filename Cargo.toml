@@ -27,10 +27,8 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 
 # Ethereum interaction
-ethers = { version = "2.0", features = ["abigen", "ws", "rustls"] }
-ethers-contract = "2.0"
-ethers-providers = "2.0"
-ethers-core = "2.0"
+alloy = { version = "0.8", features = ["full", "node-bindings", "signer-local", "provider-http", "provider-ws", "contract", "rpc"] }
+hex = "0.4"
 
 # HTTP client for external data
 reqwest = { version = "0.11", features = ["json"] }

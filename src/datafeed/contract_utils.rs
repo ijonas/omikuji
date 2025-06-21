@@ -1,7 +1,12 @@
 use anyhow::{Context, Result};
-use ethers::prelude::*;
+use alloy::{
+    primitives::{Address, I256},
+    providers::Provider,
+    network::Ethereum,
+    transports::Transport,
+};
 use std::sync::Arc;
-use crate::contracts::flux_aggregator::IFluxAggregator;
+use crate::contracts::FluxAggregatorContract;
 use crate::config::models::Datafeed;
 use tracing::warn;
 
@@ -13,25 +18,15 @@ pub fn parse_address(address_str: &str) -> Result<Address> {
 }
 
 /// Creates a FluxAggregator contract instance with a provider
-pub fn create_contract_with_provider<P>(
+pub fn create_contract_with_provider<T, P>(
     address: Address,
-    provider: Arc<P>,
-) -> IFluxAggregator<P>
+    provider: P,
+) -> FluxAggregatorContract<T, P>
 where
-    P: Middleware + 'static,
+    T: Transport + Clone,
+    P: Provider<T, Ethereum> + Clone,
 {
-    IFluxAggregator::new(address, provider)
-}
-
-/// Creates a FluxAggregator contract instance with a signer
-pub fn create_contract_with_signer<S>(
-    address: Address,
-    signer: Arc<S>,
-) -> IFluxAggregator<S>
-where
-    S: Middleware + 'static,
-{
-    IFluxAggregator::new(address, signer)
+    FluxAggregatorContract::new(address, provider)
 }
 
 /// Scales a floating point value by decimals for contract submission
@@ -46,7 +41,8 @@ pub fn validate_value_bounds(
     datafeed: &Datafeed,
 ) -> Result<()> {
     // Convert scaled_value to I256 for comparison
-    let scaled_value_i256 = I256::from(scaled_value);
+    let scaled_value_i256 = I256::try_from(scaled_value)
+        .context("Failed to convert scaled value to I256")?;
     
     if let Some(ref min_value) = datafeed.min_value {
         if scaled_value_i256 < *min_value {
