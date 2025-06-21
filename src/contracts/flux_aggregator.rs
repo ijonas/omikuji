@@ -185,6 +185,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
         network_config: &NetworkConfig,
         feed_name: &str,
         tx_log_repo: Option<Arc<TransactionLogRepository>>,
+        from_address: Option<Address>,
     ) -> Result<TransactionReceipt> {
         let gas_config = &network_config.gas_config;
         let fee_bumping = &gas_config.fee_bumping;
@@ -199,6 +200,11 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
         let mut tx = TransactionRequest::default()
             .to(self.address)
             .input(call.abi_encode().into());
+        
+        // Set from address if provided (needed for accurate gas estimation)
+        if let Some(from) = from_address {
+            tx = tx.from(from);
+        }
 
         // Estimate gas
         let gas_estimator = crate::gas::GasEstimator::<T, P>::new(Arc::new(self.provider.clone()), network_config.clone());

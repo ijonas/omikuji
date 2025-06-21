@@ -233,6 +233,11 @@ impl<'a> ContractUpdater<'a> {
         // Get network configuration for gas settings
         let network_config = self.get_network_config(datafeed)?;
         
+        // Get wallet address for gas estimation
+        let wallet_address = self.network_manager
+            .get_wallet_address(&datafeed.networks)
+            .ok(); // It's optional, so we use ok() to convert Result to Option
+        
         // Submit the transaction with gas estimation
         match contract.submit_price_with_gas_estimation(
             next_round, 
@@ -240,6 +245,7 @@ impl<'a> ContractUpdater<'a> {
             network_config,
             &datafeed.name,
             self.tx_log_repo.clone(),
+            wallet_address,
         ).await {
             Ok(receipt) => {
                 info!(
