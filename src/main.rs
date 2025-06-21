@@ -13,7 +13,7 @@ mod gas;
 mod database;
 mod metrics;
 mod wallet;
-mod welcome_screen;
+mod ui;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     // The ASCII art is 100 chars wide, so center the version string
     let width = 100;
     let version_line = format!("{:^width$}", version, width=width);
-    let welcome = welcome_screen::WELCOME_SCREEN.replace("{version_line}", &version_line);
+    let welcome = ui::welcome_screen::WELCOME_SCREEN.replace("{version_line}", &version_line);
     println!("{}", welcome);
 
     // Parse command line arguments first
