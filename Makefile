@@ -1,4 +1,4 @@
-.PHONY: build run test clean fmt lint check doc release install help
+.PHONY: build run test clean fmt lint check doc release install help tag docker docker-build docker-run
 
 # Default target
 all: build
@@ -86,6 +86,27 @@ debug:
 trace:
 	RUST_LOG=trace cargo run
 
+# Tag a new release
+tag:
+ifndef VERSION
+	$(error VERSION is not set. Usage: make tag VERSION=x.y.z)
+endif
+	@echo "Tagging version v$(VERSION)"
+	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
+	@echo "Tag created. Push with: git push origin v$(VERSION)"
+
+# Build Docker image locally
+docker-build:
+	docker build -t omikuji:latest .
+
+# Run Docker container
+docker-run:
+	docker run -v $(PWD)/config.yaml:/config/config.yaml omikuji:latest
+
+# Build multi-platform Docker image
+docker-buildx:
+	docker buildx build --platform linux/amd64,linux/arm64 -t omikuji:latest .
+
 # Help target
 help:
 	@echo "Available targets:"
@@ -110,4 +131,8 @@ help:
 	@echo "  make watch        - Run with auto-reload (needs cargo-watch)"
 	@echo "  make debug        - Run with debug logging"
 	@echo "  make trace        - Run with trace logging"
+	@echo "  make tag VERSION=x.y.z - Tag a new release"
+	@echo "  make docker-build - Build Docker image locally"
+	@echo "  make docker-run   - Run Docker container"
+	@echo "  make docker-buildx - Build multi-platform Docker image"
 	@echo "  make help         - Show this help message"

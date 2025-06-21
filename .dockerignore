@@ -1,51 +1,41 @@
-# Git
+# Git files
 .git
 .gitignore
 
-# Rust build artifacts
+# Build artifacts
 target/
-Cargo.lock
+Dockerfile
+.dockerignore
 
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# IDE
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
-.DS_Store
-Thumbs.db
-
 # Documentation
 docs/
 *.md
-
-# Database
-postgres-data/
-pgadmin-data/
-*.sql
-*.sql.gz
-
-# Logs
-*.log
-
-# Test files
-tests/
-benches/
 
 # CI/CD
 .github/
 .gitlab-ci.yml
 .travis.yml
 
-# Temporary files
-tmp/
-temp/
-*.tmp
-*.temp
+# Test files
+tests/
+benches/
+
+# Local config
+.env
+config.yaml
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup

@@ -1,0 +1,289 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.1.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          
+          echo "Generating release notes for $TAG"
+          
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 $TAG^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "First release"
+            NOTES="Initial release of Omikuji"
+          else
+            echo "Changes since $PREV_TAG"
+            NOTES=$(git log --pretty=format:"- %s" $PREV_TAG..$TAG)
+          fi
+          
+          # Write to file to handle multiline
+          cat << EOF > release_notes.md
+          ## What's Changed
+          
+          $NOTES
+          
+          ## Installation
+          
+          ### Binary Installation
+          
+          Download the appropriate binary for your platform from the assets below and verify with the SHA256 checksum.
+          
+          \`\`\`bash
+          # Download binary (example for Linux x64)
+          wget https://github.com/${{ github.repository }}/releases/download/$TAG/omikuji-linux-x64
+          
+          # Verify checksum
+          wget https://github.com/${{ github.repository }}/releases/download/$TAG/checksums.txt
+          sha256sum -c checksums.txt --ignore-missing
+          
+          # Make executable and run
+          chmod +x omikuji-linux-x64
+          ./omikuji-linux-x64 --help
+          \`\`\`
+          
+          ### Docker Installation
+          
+          \`\`\`bash
+          docker pull ghcr.io/${{ github.repository }}:$TAG
+          docker run -v \$(pwd)/config.yaml:/config.yaml ghcr.io/${{ github.repository }}:$TAG
+          \`\`\`
+          
+          ## Checksums
+          
+          See \`checksums.txt\` in the release assets for SHA256 checksums of all binaries.
+          EOF
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          release_name: Omikuji ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') || contains(github.event.inputs.tag, '-') }}
+
+  build-binaries:
+    name: Build Binaries
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          # Linux x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: omikuji-linux-x64
+          
+          # Linux ARM64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            name: omikuji-linux-arm64
+          
+          # macOS x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: omikuji-macos-x64
+          
+          # macOS ARM64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: omikuji-macos-arm64
+          
+          # Windows x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: omikuji-windows-x64.exe
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          
+          # For ARM64 cross compilation
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          fi
+
+      - name: Build binary
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+          
+      - name: Prepare binary
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BINARY_PATH="target/${{ matrix.target }}/release/omikuji.exe"
+          else
+            BINARY_PATH="target/${{ matrix.target }}/release/omikuji"
+          fi
+          
+          # Strip binary on Unix-like systems
+          if [[ "${{ matrix.os }}" != "windows-latest" ]]; then
+            strip "$BINARY_PATH" || true
+          fi
+          
+          # Move and rename
+          mv "$BINARY_PATH" "${{ matrix.name }}"
+          
+          # Generate checksum
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            shasum -a 256 "${{ matrix.name }}" > "${{ matrix.name }}.sha256"
+          else
+            sha256sum "${{ matrix.name }}" > "${{ matrix.name }}.sha256"
+          fi
+
+      - name: Upload binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ matrix.name }}
+          asset_name: ${{ matrix.name }}
+          asset_content_type: application/octet-stream
+
+      - name: Upload checksum
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ matrix.name }}.sha256
+          asset_name: ${{ matrix.name }}.sha256
+          asset_content_type: text/plain
+
+  create-checksums:
+    name: Create Combined Checksums
+    needs: [create-release, build-binaries]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download all release assets
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const assets = await github.rest.repos.listReleaseAssets({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.create-release.outputs.release_id }}
+            });
+            
+            let checksums = '';
+            for (const asset of assets.data) {
+              if (asset.name.endsWith('.sha256')) {
+                const download = await github.rest.repos.getReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: asset.id,
+                  headers: {
+                    Accept: 'application/octet-stream'
+                  }
+                });
+                checksums += Buffer.from(download.data).toString() + '\n';
+              }
+            }
+            
+            fs.writeFileSync('checksums.txt', checksums.trim());
+
+      - name: Upload combined checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain
+
+  build-docker:
+    name: Build and Push Docker Images
+    needs: create-release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
