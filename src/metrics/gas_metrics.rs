@@ -3,7 +3,10 @@ use prometheus::{
     CounterVec, HistogramVec, GaugeVec, TextEncoder, Encoder,
 };
 use lazy_static::lazy_static;
-use ethers::types::{TransactionReceipt, U256};
+use alloy::{
+    primitives::U256,
+    rpc::types::TransactionReceipt,
+};
 use tracing::{info, warn};
 
 lazy_static! {
@@ -65,22 +68,22 @@ impl GasMetrics {
         gas_limit: U256,
         tx_type: &str,
     ) {
-        let status = if receipt.status == Some(1.into()) {
+        let status = if receipt.status() {
             "success"
         } else {
             "failed"
         };
 
         // Get gas used and effective gas price
-        let gas_used = receipt.gas_used.unwrap_or_default();
-        let effective_gas_price = receipt.effective_gas_price.unwrap_or_default();
+        let gas_used = receipt.gas_used;
+        let effective_gas_price = U256::from(receipt.effective_gas_price);
         
         // Calculate metrics
-        let gas_used_f64 = gas_used.as_u64() as f64;
-        let gas_limit_f64 = gas_limit.as_u64() as f64;
-        let gas_price_gwei = effective_gas_price.as_u128() as f64 / 1e9;
-        let total_cost_wei = gas_used.saturating_mul(effective_gas_price);
-        let efficiency_percent = if gas_limit > U256::zero() {
+        let gas_used_f64 = gas_used as f64;
+        let gas_limit_f64 = gas_limit.to::<u64>() as f64;
+        let gas_price_gwei = effective_gas_price.to::<u128>() as f64 / 1e9;
+        let total_cost_wei = U256::from(gas_used).saturating_mul(effective_gas_price);
+        let efficiency_percent = if gas_limit > U256::ZERO {
             (gas_used_f64 / gas_limit_f64) * 100.0
         } else {
             0.0
@@ -101,7 +104,7 @@ impl GasMetrics {
 
         TRANSACTION_COST_WEI
             .with_label_values(&[feed_name, network])
-            .observe(total_cost_wei.as_u128() as f64);
+            .observe(total_cost_wei.to::<u128>() as f64);
 
         TRANSACTION_COUNT
             .with_label_values(&[feed_name, network, status, tx_type])
@@ -125,12 +128,12 @@ impl GasMetrics {
             efficiency_percent,
             gas_price_gwei,
             total_cost_wei,
-            total_cost_wei.as_u128() as f64 / 1e18,
+            total_cost_wei.to::<u128>() as f64 / 1e18,
             receipt.transaction_hash
         );
 
         // Warn if efficiency is poor
-        if efficiency_percent < 50.0 && gas_limit > U256::zero() {
+        if efficiency_percent < 50.0 && gas_limit > U256::ZERO {
             warn!(
                 "Low gas efficiency for {} on {}: {:.1}% of limit used. \
                 Consider reducing gas limit.",
@@ -159,7 +162,7 @@ impl GasMetrics {
             .inc();
 
         if let Some(gas_price) = estimated_gas_price {
-            let gas_price_gwei = gas_price.as_u128() as f64 / 1e9;
+            let gas_price_gwei = gas_price.to::<u128>() as f64 / 1e9;
             GAS_PRICE_GWEI
                 .with_label_values(&[network, tx_type])
                 .observe(gas_price_gwei);

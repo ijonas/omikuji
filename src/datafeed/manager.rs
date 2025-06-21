@@ -7,7 +7,7 @@ use super::contract_config::ContractConfigReader;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::{info, error};
-use ethers::types::I256;
+use alloy::primitives::I256;
 
 /// Manages all datafeed monitors
 pub struct FeedManager {
@@ -113,8 +113,8 @@ impl FeedManager {
             &datafeed.name,
             source,
             datafeed.decimals.unwrap_or(0),
-            datafeed.min_value.clone().unwrap_or_else(I256::zero),
-            datafeed.max_value.clone().unwrap_or_else(I256::zero),
+            datafeed.min_value.clone().unwrap_or(I256::ZERO),
+            datafeed.max_value.clone().unwrap_or(I256::ZERO),
         );
     }
     

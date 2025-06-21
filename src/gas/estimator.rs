@@ -1,6 +1,9 @@
-use ethers::prelude::*;
-use ethers::utils::{parse_units, format_units};
-use ethers::types::transaction::eip2718::TypedTransaction;
+use alloy::{
+    primitives::{U256, utils::{parse_units, format_units}},
+    providers::Provider,
+    rpc::types::TransactionRequest,
+    transports::Transport,
+};
 use std::sync::Arc;
 use anyhow::Result;
 use tracing::{info, warn, error};
@@ -19,29 +22,30 @@ pub struct GasEstimate {
 }
 
 /// Gas estimator that handles both legacy and EIP-1559 transactions
-pub struct GasEstimator<M: Middleware> {
-    provider: Arc<M>,
+pub struct GasEstimator<T: Transport + Clone, P: Provider<T> + Clone> {
+    provider: Arc<P>,
     network_config: Network,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<M: Middleware> GasEstimator<M> {
-    pub fn new(provider: Arc<M>, network_config: Network) -> Self {
+impl<T: Transport + Clone, P: Provider<T> + Clone> GasEstimator<T, P> {
+    pub fn new(provider: Arc<P>, network_config: Network) -> Self {
         Self {
             provider,
             network_config,
+            _phantom: std::marker::PhantomData,
         }
     }
 
     /// Estimate gas for a transaction
-    pub async fn estimate_gas<T: Into<TypedTransaction>>(
+    pub async fn estimate_gas(
         &self,
-        tx: T,
+        tx: &TransactionRequest,
     ) -> Result<GasEstimate> {
-        let typed_tx = tx.into();
         let gas_config = &self.network_config.gas_config;
 
         // Estimate gas limit
-        let gas_limit = self.estimate_gas_limit(&typed_tx, gas_config).await?;
+        let gas_limit = self.estimate_gas_limit(tx, gas_config).await?;
 
         // Estimate fees based on transaction type
         let gas_estimate = match self.network_config.transaction_type.to_lowercase().as_str() {
@@ -91,7 +95,7 @@ impl<M: Middleware> GasEstimator<M> {
     /// Estimate gas limit for a transaction
     async fn estimate_gas_limit(
         &self,
-        tx: &TypedTransaction,
+        tx: &TransactionRequest,
         gas_config: &GasConfig,
     ) -> Result<U256> {
         // Use manual override if provided
@@ -101,11 +105,12 @@ impl<M: Middleware> GasEstimator<M> {
         }
 
         // Otherwise estimate
-        match self.provider.estimate_gas(tx, None).await {
+        match self.provider.estimate_gas(tx).await {
             Ok(estimated) => {
                 // Apply multiplier for safety margin
                 let multiplier = gas_config.gas_multiplier;
-                let with_buffer = estimated.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
+                let estimated_u256 = U256::from(estimated);
+                let with_buffer = estimated_u256.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
                 info!("Estimated gas limit: {} (with {}x multiplier: {})", estimated, multiplier, with_buffer);
                 Ok(with_buffer)
             }
@@ -123,7 +128,7 @@ impl<M: Middleware> GasEstimator<M> {
     async fn estimate_legacy_gas_price(&self, gas_config: &GasConfig) -> Result<U256> {
         // Use manual override if provided
         if let Some(manual_price) = gas_config.gas_price_gwei {
-            let price_wei = parse_units(manual_price, "gwei")?;
+            let price_wei = parse_units(&manual_price.to_string(), "gwei")?;
             info!("Using manual gas price: {} gwei", manual_price);
             return Ok(price_wei.into());
         }
@@ -133,16 +138,17 @@ impl<M: Middleware> GasEstimator<M> {
             Ok(gas_price) => {
                 // Apply multiplier
                 let multiplier = gas_config.gas_multiplier;
-                let with_buffer = gas_price.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
+                let gas_price_u256 = U256::from(gas_price);
+                let with_buffer = gas_price_u256.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
                 let gwei_price = format_units(with_buffer, "gwei")?;
                 info!("Network gas price: {} gwei (with {}x multiplier: {} gwei)", 
-                    format_units(gas_price, "gwei")?, multiplier, gwei_price);
+                    format_units(gas_price_u256, "gwei")?, multiplier, gwei_price);
                 Ok(with_buffer)
             }
             Err(e) => {
                 error!("Failed to get gas price: {}", e);
                 // Fallback to 20 gwei
-                let fallback = parse_units(20, "gwei")?;
+                let fallback = parse_units("20", "gwei")?;
                 warn!("Using fallback gas price: 20 gwei");
                 Ok(fallback.into())
             }
@@ -153,11 +159,11 @@ impl<M: Middleware> GasEstimator<M> {
     async fn estimate_eip1559_fees(&self, gas_config: &GasConfig) -> Result<(U256, U256)> {
         // Check for manual overrides
         let manual_max_fee = gas_config.max_fee_per_gas_gwei
-            .map(|gwei| parse_units(gwei, "gwei").map(Into::into))
+            .map(|gwei| parse_units(&gwei.to_string(), "gwei").map(Into::into))
             .transpose()?;
         
         let manual_priority_fee = gas_config.max_priority_fee_per_gas_gwei
-            .map(|gwei| parse_units(gwei, "gwei").map(Into::into))
+            .map(|gwei| parse_units(&gwei.to_string(), "gwei").map(Into::into))
             .transpose()?;
 
         if let (Some(max_fee), Some(priority_fee)) = (manual_max_fee, manual_priority_fee) {
@@ -177,11 +183,11 @@ impl<M: Middleware> GasEstimator<M> {
                 // Estimate base fee and priority fee
                 // Priority fee is typically 1-2 gwei, we'll use 2 gwei as default
                 let base_priority_fee = manual_priority_fee
-                    .unwrap_or_else(|| parse_units(2, "gwei").unwrap().into());
+                    .unwrap_or_else(|| parse_units("2", "gwei").unwrap().into());
                 
                 // Max fee should be current gas price + priority fee + buffer
                 let base_max_fee = manual_max_fee
-                    .unwrap_or_else(|| gas_price + base_priority_fee);
+                    .unwrap_or_else(|| U256::from(gas_price) + base_priority_fee);
 
                 // Apply multiplier
                 let max_fee = base_max_fee.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
@@ -198,8 +204,8 @@ impl<M: Middleware> GasEstimator<M> {
             Err(e) => {
                 error!("Failed to get gas price for EIP-1559 estimation: {}", e);
                 // Fallback values
-                let max_fee = parse_units(50, "gwei")?.into();
-                let priority_fee = parse_units(2, "gwei")?.into();
+                let max_fee = parse_units("50", "gwei")?.into();
+                let priority_fee = parse_units("2", "gwei")?.into();
                 warn!("Using fallback EIP-1559 fees: max_fee=50 gwei, priority_fee=2 gwei");
                 Ok((max_fee, priority_fee))
             }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
-use ethers::types::I256;
+use alloy::primitives::I256;
 
 /// The main configuration structure for Omikuji
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]

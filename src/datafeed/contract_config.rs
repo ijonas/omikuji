@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use ethers::prelude::*;
+use alloy::primitives::I256;
 use std::sync::Arc;
 use tracing::info;
 
@@ -52,26 +52,23 @@ impl<'a> ContractConfigReader<'a> {
             .with_context(|| format!("Failed to get provider for network: {}", network_name))?;
         
         // Create contract instance
-        let contract = create_contract_with_provider(address, provider);
+        let contract = create_contract_with_provider(address, provider.as_ref().clone());
         
         // Read decimals
         let decimals = contract
             .decimals()
-            .call()
             .await
             .with_context(|| "Failed to read decimals from contract")?;
         
         // Read min submission value
         let min_value = contract
             .min_submission_value()
-            .call()
             .await
             .with_context(|| "Failed to read minSubmissionValue from contract")?;
         
         // Read max submission value
         let max_value = contract
             .max_submission_value()
-            .call()
             .await
             .with_context(|| "Failed to read maxSubmissionValue from contract")?;
         
@@ -99,27 +96,27 @@ mod tests {
     fn test_contract_config_struct() {
         let config = ContractConfig {
             decimals: 8,
-            min_value: I256::from(-1000000),
-            max_value: I256::from(1000000),
+            min_value: I256::try_from(-1000000).unwrap(),
+            max_value: I256::try_from(1000000).unwrap(),
         };
         
         assert_eq!(config.decimals, 8);
-        assert_eq!(config.min_value, I256::from(-1000000));
-        assert_eq!(config.max_value, I256::from(1000000));
+        assert_eq!(config.min_value, I256::try_from(-1000000).unwrap());
+        assert_eq!(config.max_value, I256::try_from(1000000).unwrap());
     }
     
     #[test]
     fn test_contract_config_with_large_values() {
         // Test with values that would overflow i64
-        let large_value = I256::from_dec_str("10000000000000000000").unwrap();
+        let large_value = I256::try_from(10000000000000000000i128).unwrap();
         let config = ContractConfig {
             decimals: 6,
-            min_value: I256::zero(),
-            max_value: large_value.clone(),
+            min_value: I256::ZERO,
+            max_value: large_value,
         };
         
         assert_eq!(config.decimals, 6);
-        assert_eq!(config.min_value, I256::zero());
+        assert_eq!(config.min_value, I256::ZERO);
         assert_eq!(config.max_value, large_value);
     }
 }
