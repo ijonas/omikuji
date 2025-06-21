@@ -445,7 +445,8 @@ fn render_logs(f: &mut Frame, area: Rect, dash: &DashboardState) {
                 }
                 let mut spans = vec![
                     Span::styled(
-                        format!("{}", entry.timestamp.format("%H:%M:%S")),
+                        // Improved timestamp format: 'YYYY-MM-DD HH:MM:SS.mmm'
+                        format!("{}", entry.timestamp.format("%Y-%m-%d %H:%M:%S%.3f")),
                         Style::default().fg(Color::Gray).add_modifier(Modifier::DIM),
                     ),
                     Span::raw(" "),

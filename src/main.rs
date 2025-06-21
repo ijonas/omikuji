@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt()
             .with_ansi(false)
             .with_writer(BoxMakeWriter::new(move || crate::tui::ChannelWriter(log_tx.clone())))
-            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::rfc_3339())
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new("%Y-%m-%d %H:%M:%S%.3f".to_string()))
             .with_target(true)
             .with_level(true)
             .with_max_level(tracing::Level::INFO)
@@ -271,7 +271,7 @@ async fn main() -> Result<()> {
         // --- Standard mode: use default tracing subscriber ---
         tracing_subscriber::fmt()
             .with_ansi(true)
-            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::rfc_3339())
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new("%Y-%m-%d %H:%M:%S%.3f".to_string()))
             .with_target(true)
             .with_level(true)
             .with_max_level(tracing::Level::INFO)
