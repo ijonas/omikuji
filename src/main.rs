@@ -211,12 +211,15 @@ async fn main() -> Result<()> {
     }
 
     // --- TUI Dashboard Integration ---
-    use tui::{DashboardState, FeedStatus, NetworkStatus, MetricsState, LogLevel, setup_log_channel_layer, start_tui_dashboard_with_state};
+    use tui::{DashboardState, FeedStatus, NetworkStatus, MetricsState, LogLevel, start_tui_dashboard_with_state};
     use tokio::sync::{mpsc, RwLock};
+    use tracing_subscriber::fmt::writer::BoxMakeWriter;
     let (log_tx, log_rx) = mpsc::channel(1000);
     let dashboard = Arc::new(RwLock::new(DashboardState::default()));
-    let log_layer = setup_log_channel_layer(log_tx.clone());
-    tracing_subscriber::registry().with(log_layer).init();
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(BoxMakeWriter::new(move || tui::ChannelWriter(log_tx.clone())))
+        .init();
 
     // If TUI mode is enabled, launch the dashboard and update state in background
     if args.tui {

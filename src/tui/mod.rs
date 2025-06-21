@@ -15,6 +15,7 @@ use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, Key
 use crossterm::execute;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use tokio::sync::{mpsc, RwLock};
+use ratatui::Frame;
 
 // --- Shared State Structures ---
 #[derive(Clone, Debug)]
@@ -87,22 +88,8 @@ impl LogLevel {
 }
 
 // --- Log Channel and Tracing Layer ---
-use ratatui::terminal::Frame;
-use tracing::{Event as TracingEvent, Subscriber};
-use tracing_subscriber::layer::{Context, Layer};
-use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::fmt::Layer as FmtLayer;
-use tracing_subscriber::prelude::*;
-
-pub fn setup_log_channel_layer(_tx: mpsc::Sender<(String, LogLevel)>) -> FmtLayer<tracing_subscriber::Registry> {
-    tracing_subscriber::fmt::layer()
-        .with_ansi(false)
-        .with_writer(std::io::stdout)
-}
-
-struct LogWriter(mpsc::Sender<(String, LogLevel)>);
-
-impl std::io::Write for LogWriter {
+pub struct ChannelWriter(pub mpsc::Sender<(String, LogLevel)>);
+impl std::io::Write for ChannelWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let msg = String::from_utf8_lossy(buf).to_string();
         let level = if msg.contains("ERROR") {
@@ -173,10 +160,9 @@ async fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     dashboard: Arc<RwLock<DashboardState>>,
 ) -> io::Result<()> {
-    use ratatui::widgets::{Tabs};
+    use ratatui::widgets::Tabs;
     use ratatui::style::Style;
     let panel_titles = [
-        Line::from("Logs"),
         Line::from("Metrics"),
         Line::from("Feeds"),
         Line::from("Network"),
@@ -188,34 +174,31 @@ async fn run_app<B: ratatui::backend::Backend>(
         let dash = dashboard.read().await.clone();
         terminal.draw(|f| {
             let size = f.size();
-            let chunks = Layout::default()
+            let layout = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(1)
                 .constraints([
-                    Constraint::Length(2),
-                    Constraint::Min(0),
-                    Constraint::Length(1),
+                    Constraint::Length(2), // Tab bar
+                    Constraint::Min(8),   // Tab content
+                    Constraint::Length((size.height / 3).max(5)), // Logs bottom third
                 ])
                 .split(size);
-            // Top bar
+            // Tab bar
             let tabs = Tabs::new(panel_titles.to_vec())
                 .select(dash.selected_panel)
                 .block(Block::default().borders(Borders::ALL).title("Omikuji Dashboard"))
                 .highlight_style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
-            f.render_widget(tabs, chunks[0]);
-            // Main panel
+            f.render_widget(tabs, layout[0]);
+            // Tab content
             match dash.selected_panel {
-                0 => render_logs(f, chunks[1], &dash),
-                1 => render_metrics(f, chunks[1], &dash),
-                2 => render_feeds(f, chunks[1], &dash),
-                3 => render_network(f, chunks[1], &dash),
-                4 => render_alerts(f, chunks[1], &dash),
+                0 => render_metrics(f, layout[1], &dash),
+                1 => render_feeds(f, layout[1], &dash),
+                2 => render_network(f, layout[1], &dash),
+                3 => render_alerts(f, layout[1], &dash),
                 _ => {},
             }
-            // Footer
-            let help = Paragraph::new("[Tab] Switch Panel  [↑/↓] Scroll  [F]ilter  [R]efresh  [Q]uit")
-                .style(Style::default().fg(Color::DarkGray));
-            f.render_widget(help, chunks[2]);
+            // Logs always at bottom
+            render_logs(f, layout[2], &dash);
         })?;
         // Handle input
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
