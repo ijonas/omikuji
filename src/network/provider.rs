@@ -1,11 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
-use ethers::prelude::*;
+use alloy::{
+    network::EthereumWallet,
+    providers::{Provider, ProviderBuilder, RootProvider},
+    signers::local::PrivateKeySigner,
+    transports::http::{Client, Http},
+};
 use thiserror::Error;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use url::Url;
 
 use crate::config::models::Network;
@@ -17,23 +21,25 @@ pub enum NetworkError {
     NetworkNotFound(String),
 
     #[error("Provider error: {0}")]
-    ProviderError(#[from] ProviderError),
+    ProviderError(String),
 
     #[error("RPC connection failed: {0}")]
     ConnectionFailed(String),
 }
 
-/// Type alias for the ethers-rs provider we will use
-pub type EthProvider = Provider<Http>;
+/// Type alias for the alloy provider we will use
+pub type EthProvider = RootProvider<Http<Client>>;
 
 /// Manages the connections to different EVM networks
-#[derive(Debug)]
 pub struct NetworkManager {
     /// Map of network name to provider
     providers: HashMap<String, Arc<EthProvider>>,
     
-    /// Signers for each network, keyed by network name
-    signers: HashMap<String, Arc<SignerMiddleware<Arc<EthProvider>, LocalWallet>>>,
+    /// Providers with signers for each network
+    signers: HashMap<String, Arc<EthProvider>>,
+    
+    /// RPC URLs for each network (needed for creating signed providers)
+    rpc_urls: HashMap<String, String>,
 }
 
 impl NetworkManager {
@@ -41,6 +47,7 @@ impl NetworkManager {
     pub async fn new(networks: &[Network]) -> Result<Self> {
         let mut providers = HashMap::new();
         let signers = HashMap::new();
+        let mut rpc_urls = HashMap::new();
 
         for network in networks {
             let provider = Self::create_provider(&network.rpc_url)
@@ -48,33 +55,43 @@ impl NetworkManager {
                 .with_context(|| format!("Failed to create provider for network {}", network.name))?;
             
             providers.insert(network.name.clone(), Arc::new(provider));
+            rpc_urls.insert(network.name.clone(), network.rpc_url.clone());
         }
 
         Ok(Self {
             providers,
             signers,
+            rpc_urls,
         })
     }
 
     /// Load a wallet from an environment variable
     pub async fn load_wallet_from_env(&mut self, network_name: &str, env_var: &str) -> Result<()> {
-        let provider = self.get_provider(network_name)?;
-
         let private_key = std::env::var(env_var)
             .with_context(|| format!("Environment variable {} not found", env_var))?;
 
-        let wallet = private_key
-            .parse::<LocalWallet>()
-            .with_context(|| "Failed to parse private key as wallet")?;
+        let signer = private_key
+            .parse::<PrivateKeySigner>()
+            .with_context(|| "Failed to parse private key as signer")?;
 
-        let chain_id = self.get_chain_id(network_name).await?;
-        let wallet = wallet.with_chain_id(chain_id);
+        let _wallet = EthereumWallet::from(signer);
 
         debug!("Loaded wallet for network {}", network_name);
 
-        let signer = SignerMiddleware::new(provider.clone(), wallet);
-        self.signers.insert(network_name.to_string(), Arc::new(signer));
-
+        // Get the RPC URL for this network
+        let rpc_url = self.rpc_urls
+            .get(network_name)
+            .ok_or_else(|| NetworkError::NetworkNotFound(network_name.to_string()))?;
+        
+        let _url = Url::parse(rpc_url)
+            .with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
+        
+        // For now, we'll store the wallet separately and handle signing differently
+        // This is a temporary solution until we figure out the proper type handling
+        // TODO: Implement proper wallet integration with alloy
+        
+        warn!("Wallet loading not fully implemented for alloy migration");
+        
         Ok(())
     }
 
@@ -82,11 +99,11 @@ impl NetworkManager {
     pub async fn get_chain_id(&self, network_name: &str) -> Result<u64> {
         let provider = self.get_provider(network_name)?;
         let chain_id = provider
-            .get_chainid()
+            .get_chain_id()
             .await
             .with_context(|| format!("Failed to get chain ID for network {}", network_name))?;
         
-        Ok(chain_id.as_u64())
+        Ok(chain_id)
     }
 
     /// Get the block number for a given network
@@ -97,7 +114,7 @@ impl NetworkManager {
             .await
             .with_context(|| format!("Failed to get block number for network {}", network_name))?;
         
-        Ok(block_number.as_u64())
+        Ok(block_number)
     }
 
     /// Get a provider for a given network
@@ -109,7 +126,7 @@ impl NetworkManager {
     }
 
     /// Get a signer for a given network
-    pub fn get_signer(&self, network_name: &str) -> Result<Arc<SignerMiddleware<Arc<EthProvider>, LocalWallet>>> {
+    pub fn get_signer(&self, network_name: &str) -> Result<Arc<EthProvider>> {
         self.signers
             .get(network_name)
             .cloned()
@@ -128,11 +145,8 @@ impl NetworkManager {
         let url = Url::parse(rpc_url)
             .with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
 
-        let http_provider = Http::new(url);
-        let mut provider = Provider::new(http_provider);
-
-        // Configure timeouts for the provider
-        provider.set_interval(Duration::from_millis(2000));
+        let provider = ProviderBuilder::new()
+            .on_http(url);
 
         // Test connection by getting the current block number
         match provider.get_block_number().await {

@@ -91,8 +91,9 @@ mod tests {
         assert_eq!(config.datafeeds[0].decimals, Some(8));
         
         // I256 values from YAML are parsed correctly
-        let expected_min = ethers::types::I256::from(0);
-        let expected_max = ethers::types::I256::from(1000000000000i64);
+        use alloy::primitives::I256;
+        let expected_min = I256::try_from(0).unwrap();
+        let expected_max = I256::try_from(1000000000000i64).unwrap();
         
         assert_eq!(config.datafeeds[0].min_value, Some(expected_min));
         assert_eq!(config.datafeeds[0].max_value, Some(expected_max));
