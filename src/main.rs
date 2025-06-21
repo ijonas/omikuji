@@ -13,6 +13,7 @@ mod gas;
 mod database;
 mod metrics;
 mod wallet;
+mod welcome_screen;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -36,6 +37,9 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Print welcome screen with version
+    println!("{}\nOmikuji version: {}\n", welcome_screen::WELCOME_SCREEN, env!("CARGO_PKG_VERSION"));
+
     // Parse command line arguments first
     // This allows --version and --help to work without any side effects
     let args = Args::parse();
