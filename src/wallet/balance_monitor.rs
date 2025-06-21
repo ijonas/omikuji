@@ -1,6 +1,6 @@
 use crate::network::NetworkManager;
 use crate::metrics::FeedMetrics;
-use alloy::primitives::{Address, U256, utils::format_units};
+use alloy::primitives::utils::format_units;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{info, error, debug};
@@ -52,11 +52,8 @@ impl WalletBalanceMonitor {
 
     /// Update balance for a specific network
     async fn update_network_balance(&self, network_name: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Get the signer for this network (which contains the wallet)
-        let signer = self.network_manager.get_signer(network_name)?;
-        // For now, we'll need to get the address differently in alloy
-        // This will need to be updated based on how addresses are extracted from the signer
-        let address = Address::ZERO; // Placeholder - needs proper implementation
+        // Get the wallet address for this network
+        let address = self.network_manager.get_wallet_address(network_name)?;
         
         // Get the provider to query balance
         let provider = self.network_manager.get_provider(network_name)?;

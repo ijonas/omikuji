@@ -1,12 +1,14 @@
 use anyhow::{Context, Result};
 use alloy::{
     primitives::{I256, U256},
-    providers::RootProvider,
+    providers::{Provider, ProviderBuilder, RootProvider},
+    signers::local::PrivateKeySigner,
+    network::{Ethereum, EthereumWallet},
     transports::http::{Client, Http},
-    network::Ethereum,
 };
 use std::sync::Arc;
 use tracing::{info, error, debug};
+use url::Url;
 
 use crate::network::NetworkManager;
 use crate::config::models::{Datafeed, OmikujiConfig};
@@ -57,13 +59,32 @@ impl<'a> ContractUpdater<'a> {
         Ok(create_contract_with_provider(address, provider.as_ref().clone()))
     }
     
-    /// Gets a contract instance with signer for write operations
-    async fn get_contract_for_write(&self, datafeed: &Datafeed) -> Result<FluxAggregatorContract<Http<Client>, RootProvider<Http<Client>, Ethereum>>> {
-        let signer = self.network_manager
-            .get_signer(&datafeed.networks)
-            .with_context(|| format!("{} {}", errors::NO_SIGNER_AVAILABLE, datafeed.networks))?;
-        let address = parse_address(&datafeed.contract_address)?;
-        Ok(create_contract_with_provider(address, signer.as_ref().clone()))
+    /// Creates a provider with signer for write operations
+    async fn create_signer_provider(&self, network_name: &str) -> Result<impl Provider<Http<Client>, Ethereum> + Clone> {
+        // Get the private key and RPC URL
+        let private_key = self.network_manager
+            .get_private_key(network_name)
+            .with_context(|| format!("{} {}", errors::NO_SIGNER_AVAILABLE, network_name))?;
+        
+        let rpc_url = self.network_manager
+            .get_rpc_url(network_name)?;
+        
+        // Parse the private key
+        let signer = private_key
+            .parse::<PrivateKeySigner>()
+            .with_context(|| "Failed to parse private key as signer")?;
+        
+        let wallet = EthereumWallet::from(signer);
+        
+        // Create a provider with wallet
+        let url = Url::parse(rpc_url)
+            .with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
+        
+        let provider_with_wallet = ProviderBuilder::new()
+            .wallet(wallet)
+            .on_http(url);
+        
+        Ok(provider_with_wallet)
     }
     
     /// Checks if a contract update is needed based on time elapsed
@@ -177,8 +198,12 @@ impl<'a> ContractUpdater<'a> {
             value, datafeed.contract_address, datafeed.networks
         );
         
-        // Get contract instance with signer
-        let contract = self.get_contract_for_write(datafeed).await?;
+        // Create provider with signer
+        let provider = self.create_signer_provider(&datafeed.networks).await?;
+        
+        // Create contract instance with the signing provider
+        let address = parse_address(&datafeed.contract_address)?;
+        let contract = create_contract_with_provider(address, provider);
         
         // Get current round ID
         let latest_round = contract

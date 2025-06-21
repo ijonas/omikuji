@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use alloy::{
-    network::EthereumWallet,
+    network::{EthereumWallet, Ethereum},
+    primitives::Address,
     providers::{Provider, ProviderBuilder, RootProvider},
     signers::local::PrivateKeySigner,
-    transports::http::{Client, Http},
+    transports::{http::{Client, Http}, Transport},
 };
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info};
 use url::Url;
 
 use crate::config::models::Network;
@@ -35,19 +36,23 @@ pub struct NetworkManager {
     /// Map of network name to provider
     providers: HashMap<String, Arc<EthProvider>>,
     
-    /// Providers with signers for each network
-    signers: HashMap<String, Arc<EthProvider>>,
+    /// Private keys for each network (stored securely)
+    private_keys: HashMap<String, String>,
     
     /// RPC URLs for each network (needed for creating signed providers)
     rpc_urls: HashMap<String, String>,
+    
+    /// Wallet addresses for each network
+    wallet_addresses: HashMap<String, Address>,
 }
 
 impl NetworkManager {
     /// Create a new network manager from a list of network configurations
     pub async fn new(networks: &[Network]) -> Result<Self> {
         let mut providers = HashMap::new();
-        let signers = HashMap::new();
+        let private_keys = HashMap::new();
         let mut rpc_urls = HashMap::new();
+        let wallet_addresses = HashMap::new();
 
         for network in networks {
             let provider = Self::create_provider(&network.rpc_url)
@@ -60,37 +65,38 @@ impl NetworkManager {
 
         Ok(Self {
             providers,
-            signers,
+            private_keys,
             rpc_urls,
+            wallet_addresses,
         })
     }
 
     /// Load a wallet from an environment variable
     pub async fn load_wallet_from_env(&mut self, network_name: &str, env_var: &str) -> Result<()> {
+        info!("Attempting to load wallet for network {} from env var {}", network_name, env_var);
+        
+        // Check if the network exists
+        if !self.providers.contains_key(network_name) {
+            return Err(NetworkError::NetworkNotFound(network_name.to_string()).into());
+        }
+        
         let private_key = std::env::var(env_var)
             .with_context(|| format!("Environment variable {} not found", env_var))?;
+        
+        info!("Successfully read private key from env var {} (length: {})", env_var, private_key.len());
 
         let signer = private_key
             .parse::<PrivateKeySigner>()
             .with_context(|| "Failed to parse private key as signer")?;
 
-        let _wallet = EthereumWallet::from(signer);
+        // Store the wallet address
+        let wallet_address = signer.address();
+        self.wallet_addresses.insert(network_name.to_string(), wallet_address);
+        
+        // Store the private key (we'll create providers with wallets on demand)
+        self.private_keys.insert(network_name.to_string(), private_key);
 
-        debug!("Loaded wallet for network {}", network_name);
-
-        // Get the RPC URL for this network
-        let rpc_url = self.rpc_urls
-            .get(network_name)
-            .ok_or_else(|| NetworkError::NetworkNotFound(network_name.to_string()))?;
-        
-        let _url = Url::parse(rpc_url)
-            .with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
-        
-        // For now, we'll store the wallet separately and handle signing differently
-        // This is a temporary solution until we figure out the proper type handling
-        // TODO: Implement proper wallet integration with alloy
-        
-        warn!("Wallet loading not fully implemented for alloy migration");
+        info!("Successfully loaded wallet for network {} with address {}", network_name, wallet_address);
         
         Ok(())
     }
@@ -125,19 +131,46 @@ impl NetworkManager {
             .ok_or_else(|| NetworkError::NetworkNotFound(network_name.to_string()).into())
     }
 
-    /// Get a signer for a given network
-    pub fn get_signer(&self, network_name: &str) -> Result<Arc<EthProvider>> {
-        self.signers
+    /// Get the private key for a network
+    pub fn get_private_key(&self, network_name: &str) -> Result<String> {
+        self.private_keys
             .get(network_name)
             .cloned()
-            .ok_or_else(|| {
-                anyhow::anyhow!("No signer found for network {}. Call load_wallet_from_env first", network_name)
-            })
+            .ok_or_else(|| anyhow::anyhow!("No private key found for network {}. Call load_wallet_from_env first", network_name))
+    }
+    
+    /// Get the RPC URL for a network
+    pub fn get_rpc_url(&self, network_name: &str) -> Result<&str> {
+        self.rpc_urls
+            .get(network_name)
+            .map(|s| s.as_str())
+            .ok_or_else(|| NetworkError::NetworkNotFound(network_name.to_string()).into())
+    }
+    
+    /// Get a signer for a given network
+    pub fn get_signer(&self, network_name: &str) -> Result<Arc<EthProvider>> {
+        // For backward compatibility, check if we have a private key
+        if self.private_keys.contains_key(network_name) {
+            // Return the regular provider - the actual signing will be handled differently
+            self.get_provider(network_name)
+        } else {
+            Err(anyhow::anyhow!("No signer found for network {}. Call load_wallet_from_env first", network_name))
+        }
     }
 
     /// Get all configured network names
     pub fn get_network_names(&self) -> Vec<String> {
         self.providers.keys().cloned().collect()
+    }
+
+    /// Get the wallet address for a given network
+    pub fn get_wallet_address(&self, network_name: &str) -> Result<Address> {
+        self.wallet_addresses
+            .get(network_name)
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!("No wallet address found for network {}. Call load_wallet_from_env first", network_name)
+            })
     }
 
     /// Create a provider from an RPC URL
