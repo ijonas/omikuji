@@ -14,10 +14,16 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       release_id: ${{ steps.create_release.outputs.id }}
@@ -86,15 +92,35 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          release_name: Omikuji ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-') || contains(github.event.inputs.tag, '-') }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          
+          # Determine if prerelease
+          if [[ "$TAG" == *"-"* ]]; then
+            PRERELEASE="--prerelease"
+          else
+            PRERELEASE=""
+          fi
+          
+          # Create the release
+          gh release create "$TAG" \
+            --title "Omikuji $TAG" \
+            --notes-file release_notes.md \
+            $PRERELEASE
+          
+          # Get release info for outputs
+          RELEASE_DATA=$(gh release view "$TAG" --json uploadUrl,id)
+          UPLOAD_URL=$(echo "$RELEASE_DATA" | jq -r '.uploadUrl' | sed 's/{?name,label}//')
+          RELEASE_ID=$(echo "$RELEASE_DATA" | jq -r '.id')
+          
+          echo "upload_url=$UPLOAD_URL" >> $GITHUB_OUTPUT
+          echo "id=$RELEASE_ID" >> $GITHUB_OUTPUT
 
   build-binaries:
     name: Build Binaries
@@ -179,25 +205,21 @@ jobs:
             sha256sum "${{ matrix.name }}" > "${{ matrix.name }}.sha256"
           fi
 
-      - name: Upload binary
-        uses: actions/upload-release-asset@v1
+      - name: Upload binary and checksum
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ matrix.name }}
-          asset_name: ${{ matrix.name }}
-          asset_content_type: application/octet-stream
-
-      - name: Upload checksum
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ matrix.name }}.sha256
-          asset_name: ${{ matrix.name }}.sha256
-          asset_content_type: text/plain
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          
+          # Upload binary
+          gh release upload "$TAG" "${{ matrix.name }}" --clobber
+          
+          # Upload checksum
+          gh release upload "$TAG" "${{ matrix.name }}.sha256" --clobber
 
   create-checksums:
     name: Create Combined Checksums
@@ -234,19 +256,25 @@ jobs:
             fs.writeFileSync('checksums.txt', checksums.trim());
 
       - name: Upload combined checksums
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: checksums.txt
-          asset_name: checksums.txt
-          asset_content_type: text/plain
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          
+          # Upload combined checksums
+          gh release upload "$TAG" checksums.txt --clobber
 
   build-docker:
     name: Build and Push Docker Images
     needs: create-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     
     steps:
       - name: Checkout code
