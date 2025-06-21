@@ -128,15 +128,10 @@ jobs:
     strategy:
       matrix:
         include:
-          # Linux x64
+          # Linux x64 (static musl build)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             name: omikuji-linux-x64
-          
-          # Linux ARM64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            name: omikuji-linux-arm64
           
           # macOS x64
           - os: macos-latest
@@ -165,21 +160,26 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install cross-compilation tools
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && contains(matrix.target, 'musl')
         run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
+          # Install cross for musl targets (pre-built binary for faster CI)
+          curl -L https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          sudo mv cross /usr/local/bin/
+          sudo chmod +x /usr/local/bin/cross
           
-          # For ARM64 cross compilation
-          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-            echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          fi
+          # Ensure Docker is running (required by cross)
+          sudo systemctl start docker || true
+          docker --version
 
       - name: Build binary
         run: |
-          cargo build --release --target ${{ matrix.target }}
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" && "${{ matrix.target }}" == *"-musl" ]]; then
+            # Use cross for musl targets to handle OpenSSL and other dependencies
+            cross build --release --target ${{ matrix.target }}
+          else
+            # Use cargo directly for native builds
+            cargo build --release --target ${{ matrix.target }}
+          fi
           
       - name: Prepare binary
         shell: bash
