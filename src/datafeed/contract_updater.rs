@@ -81,6 +81,7 @@ impl<'a> ContractUpdater<'a> {
             .with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
         
         let provider_with_wallet = ProviderBuilder::new()
+            .with_recommended_fillers()
             .wallet(wallet)
             .on_http(url);
         
