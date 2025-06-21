@@ -2,20 +2,35 @@
 # Builder stage
 FROM rust:1.82-bookworm AS builder
 
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create app directory
 WORKDIR /build
 
-# Copy manifests
+# Copy manifests first for better caching
 COPY Cargo.toml Cargo.lock ./
 
-# Copy source code
+# Create dummy main.rs for dependency caching
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs
+
+# Build dependencies only (this layer will be cached)
+RUN cargo build --release && \
+    rm -rf src
+
+# Copy actual source code
 COPY src ./src
 
 # Copy migrations for SQLx compile-time verification
 COPY migrations ./migrations
 
-# Build the application
-RUN cargo build --release && \
+# Build the application (only rebuilds if source changes)
+RUN touch src/main.rs && \
+    cargo build --release && \
     strip target/release/omikuji
 
 # Runtime stage

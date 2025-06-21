@@ -92,6 +92,7 @@ jobs:
 
       - name: Create Release
         id: create_release
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -160,6 +161,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build binary
+        shell: bash
         run: |
           cargo build --release --target ${{ matrix.target }}
           
@@ -188,6 +190,7 @@ jobs:
           fi
 
       - name: Upload binary and checksum
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -238,6 +241,7 @@ jobs:
             fs.writeFileSync('checksums.txt', checksums.trim());
 
       - name: Upload combined checksums
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
