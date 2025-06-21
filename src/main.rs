@@ -13,6 +13,7 @@ mod gas;
 mod database;
 mod metrics;
 mod wallet;
+mod tui; // Add this to import the TUI dashboard module
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -32,6 +33,10 @@ struct Args {
     /// Private key environment variable for signing transactions
     #[arg(short, long, default_value = "OMIKUJI_PRIVATE_KEY")]
     private_key_env: String,
+
+    /// Enable TUI dashboard mode
+    #[arg(long, help = "Enable TUI dashboard (terminal UI) mode")]
+    tui: bool,
 }
 
 #[tokio::main]
@@ -202,6 +207,11 @@ async fn main() -> Result<()> {
             Ok(block_number) => info!("Network {} current block: {}", network.name, block_number),
             Err(e) => error!("Failed to get block number for network {}: {}", network.name, e),
         }
+    }
+
+    // If TUI mode is enabled, start the dashboard and exit after
+    if args.tui {
+        return tui::start_tui_dashboard().await.map_err(|e: std::io::Error| anyhow::anyhow!(e));
     }
 
     // Keep the application running
