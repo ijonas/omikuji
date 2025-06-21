@@ -266,6 +266,15 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                 Ok(Ok(receipt)) => {
                     info!("Transaction confirmed: 0x{:x}", tx_hash);
                     
+                    // Record gas metrics
+                    GasMetrics::record_transaction(
+                        feed_name,
+                        &network_config.name,
+                        &receipt,
+                        gas_estimate.gas_limit,
+                        &network_config.transaction_type,
+                    );
+                    
                     // Log transaction if repository is available
                     if let Some(repo) = &tx_log_repo {
                         if let Err(e) = Self::log_transaction(
@@ -285,6 +294,17 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                 }
                 Ok(Err(e)) => {
                     error!("Transaction failed: {}", e);
+                    
+                    // Record failed transaction
+                    GasMetrics::record_failed_transaction(
+                        feed_name,
+                        &network_config.name,
+                        gas_estimate.gas_limit,
+                        gas_estimate.gas_price.or(gas_estimate.max_fee_per_gas),
+                        &network_config.transaction_type,
+                        &e.to_string(),
+                    );
+                    
                     if attempt >= max_attempts {
                         return Err(anyhow::anyhow!("Transaction failed after {} attempts: {}", attempt, e));
                     }
