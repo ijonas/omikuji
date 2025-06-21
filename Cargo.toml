@@ -1,8 +1,8 @@
 [package]
 name = "omikuji"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2021"
-authors = ["Ijonas Kisselbach <ijonas.kisselbach@gmail.com>"]
+authors = ["Ijonas Kisselbach <ijonas@ijonas.com>"]
 description = "A lightweight EVM blockchain datafeed provider daemon"
 repository = "https://github.com/ijonas/omikuji"
 license = "MIT"
