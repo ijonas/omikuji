@@ -43,12 +43,25 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse command line arguments first
-    // This allows --version and --help to work without any side effects
     let args = Args::parse();
 
-    // Initialize logging after argument parsing
-    // tracing_subscriber::fmt::init(); // REMOVE this line to avoid double global subscriber
-    
+    // --- TUI Dashboard Log Channel Setup ---
+    use tui::{DashboardState, FeedStatus, NetworkStatus, MetricsState, LogLevel, start_tui_dashboard_with_state};
+    use tokio::sync::{mpsc, RwLock};
+    use tracing_subscriber::fmt::writer::BoxMakeWriter;
+    let (log_tx, log_rx) = mpsc::channel(1000);
+    let dashboard = Arc::new(RwLock::new(DashboardState::default()));
+    // Initialize tracing-subscriber BEFORE any log statements
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(BoxMakeWriter::new(move || tui::ChannelWriter(log_tx.clone())))
+        .with_timer(tracing_subscriber::fmt::time::ChronoLocal::rfc_3339())
+        .with_target(true)
+        .with_level(true)
+        .with_max_level(tracing::Level::INFO) // Explicitly set log level
+        .compact()
+        .init();
+
     // Load .env file if it exists
     match dotenv::dotenv() {
         Ok(path) => info!("Loaded .env file from: {:?}", path),
@@ -56,8 +69,23 @@ async fn main() -> Result<()> {
     }
 
     // Determine configuration path
-    let config_path = args.config.unwrap_or_else(config::default_config_path);
+    let config_arg = args.config.as_ref();
+    let mut config_path = config_arg.cloned().unwrap_or_else(config::default_config_path);
+    if !config_path.exists() {
+        // If user did not specify --config and config.yaml exists in cwd, use it
+        if config_arg.is_none() {
+            let cwd_config = std::path::PathBuf::from("config.yaml");
+            if cwd_config.exists() {
+                info!("No config file at {:?}, falling back to ./config.yaml", config_path);
+                config_path = cwd_config;
+            }
+        }
+    }
     info!("Using configuration file: {:?}", config_path);
+    if !config_path.exists() {
+        error!("Configuration file not found: {:?}. To run Omikuji, use: cargo run -- --tui --config <your_config.yaml>", config_path);
+        return Err(anyhow::anyhow!("Missing configuration file: {:?}", config_path));
+    }
 
     // Load and validate configuration
     let config = match config::load_config(&config_path) {
@@ -209,17 +237,6 @@ async fn main() -> Result<()> {
             Err(e) => error!("Failed to get block number for network {}: {}", network.name, e),
         }
     }
-
-    // --- TUI Dashboard Integration ---
-    use tui::{DashboardState, FeedStatus, NetworkStatus, MetricsState, LogLevel, start_tui_dashboard_with_state};
-    use tokio::sync::{mpsc, RwLock};
-    use tracing_subscriber::fmt::writer::BoxMakeWriter;
-    let (log_tx, log_rx) = mpsc::channel(1000);
-    let dashboard = Arc::new(RwLock::new(DashboardState::default()));
-    tracing_subscriber::fmt()
-        .with_ansi(false)
-        .with_writer(BoxMakeWriter::new(move || tui::ChannelWriter(log_tx.clone())))
-        .init();
 
     // If TUI mode is enabled, launch the dashboard and update state in background
     if args.tui {

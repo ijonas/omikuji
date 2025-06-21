@@ -181,3 +181,24 @@ sudo mv target/release/omikuji /usr/local/bin/
   - [Configuration Reference](specs/configuration.md) - Complete configuration file specification
 
   For more information and contribution guidelines, visit: https://github.com/ijonas/omikuji
+
+## Usage
+
+You can run Omikuji with the TUI dashboard using:
+
+```
+cargo run -- --tui
+```
+
+- If you do **not** specify `--config`, Omikuji will:
+  1. Try to use the default config path (`~/.omikuji/config.yaml`).
+  2. If that does not exist, it will automatically use `./config.yaml` if present in your current directory.
+  3. If neither exists, you will see a clear error with instructions.
+
+To specify a config file explicitly:
+
+```
+cargo run -- --tui --config path/to/your_config.yaml
+```
+
+If you see an error about a missing configuration file, ensure you have a valid config at one of the above locations, or use the `--config` flag.
