@@ -59,7 +59,7 @@ Omikuji will monitor external datafeeds such as price feeds (the price of gold, 
 Download pre-built binaries for your platform from the [latest release](https://github.com/ijonas/omikuji/releases/latest):
 
 ```bash
-# Linux x64
+# Linux x64 (requires glibc 2.31+, standard on Ubuntu 20.04+, Debian 11+)
 wget https://github.com/ijonas/omikuji/releases/latest/download/omikuji-linux-x64
 chmod +x omikuji-linux-x64
 sudo mv omikuji-linux-x64 /usr/local/bin/omikuji

@@ -1,14 +1,6 @@
 # Multi-stage build for minimal final image
 # Builder stage
-FROM rust:1.82-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache \
-    musl-dev \
-    openssl-dev \
-    openssl-libs-static \
-    pkgconfig \
-    git
+FROM rust:1.82-bookworm AS builder
 
 # Create app directory
 WORKDIR /build
@@ -20,24 +12,24 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
 # Build the application
-RUN cargo build --release --target x86_64-unknown-linux-musl && \
-    strip target/x86_64-unknown-linux-musl/release/omikuji
+RUN cargo build --release && \
+    strip target/release/omikuji
 
 # Runtime stage
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     ca-certificates \
     tzdata \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN addgroup -g 1000 omikuji && \
-    adduser -D -u 1000 -G omikuji omikuji
+RUN groupadd -r -g 1000 omikuji && \
+    useradd -r -u 1000 -g omikuji omikuji
 
 # Copy binary from builder
-COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/omikuji /usr/local/bin/omikuji
+COPY --from=builder /build/target/release/omikuji /usr/local/bin/omikuji
 
 # Create config directory
 RUN mkdir -p /config && chown omikuji:omikuji /config
