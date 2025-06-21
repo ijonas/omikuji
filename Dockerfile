@@ -11,6 +11,9 @@ COPY Cargo.toml Cargo.lock ./
 # Copy source code
 COPY src ./src
 
+# Copy migrations for SQLx compile-time verification
+COPY migrations ./migrations
+
 # Build the application
 RUN cargo build --release && \
     strip target/release/omikuji
