@@ -1,6 +1,6 @@
 use prometheus::{
     register_counter_vec, register_histogram_vec, register_gauge_vec,
-    CounterVec, HistogramVec, GaugeVec, TextEncoder, Encoder,
+    CounterVec, HistogramVec, GaugeVec,
 };
 use lazy_static::lazy_static;
 use alloy::{
@@ -173,15 +173,6 @@ impl GasMetrics {
             Gas Limit: {}, Error: {}",
             feed_name, network, gas_limit, error
         );
-    }
-
-    /// Get Prometheus metrics as text
-    pub fn gather_metrics() -> String {
-        let encoder = TextEncoder::new();
-        let metric_families = prometheus::gather();
-        let mut buffer = Vec::new();
-        encoder.encode(&metric_families, &mut buffer).unwrap();
-        String::from_utf8(buffer).unwrap()
     }
 }
 

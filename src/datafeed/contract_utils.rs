@@ -5,7 +5,6 @@ use alloy::{
     network::Ethereum,
     transports::Transport,
 };
-use std::sync::Arc;
 use crate::contracts::FluxAggregatorContract;
 use crate::config::models::Datafeed;
 use tracing::warn;

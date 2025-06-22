@@ -131,6 +131,7 @@ async fn run_cleanup(config: &OmikujiConfig, repository: &FeedLogRepository) -> 
 }
 
 /// Runs a one-time cleanup (useful for testing or manual execution)
+#[allow(dead_code)]
 pub async fn run_manual_cleanup(
     config: &OmikujiConfig,
     repository: &FeedLogRepository,

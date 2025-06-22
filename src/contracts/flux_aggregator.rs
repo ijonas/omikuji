@@ -1,18 +1,18 @@
 use alloy::{
-    network::{Network, TransactionBuilder, Ethereum},
-    primitives::{Address, I256, U256, Bytes},
-    providers::{Provider, RootProvider, PendingTransactionConfig},
+    network::{TransactionBuilder, Ethereum},
+    primitives::{Address, I256, U256},
+    providers::Provider,
     rpc::types::{TransactionRequest, TransactionReceipt, BlockId},
     sol,
     sol_types::SolCall,
     transports::Transport,
 };
 use crate::gas::GasEstimate;
-use crate::config::models::{Network as NetworkConfig, GasConfig, FeeBumpingConfig};
+use crate::config::models::Network as NetworkConfig;
 use crate::metrics::gas_metrics::{GasMetrics, TransactionDetails};
 use crate::database::TransactionLogRepository;
-use tracing::{info, warn, error, debug};
-use tokio::time::{sleep, Duration};
+use tracing::{info, warn, error};
+use tokio::time::Duration;
 use std::sync::Arc;
 use anyhow::Result;
 
@@ -145,6 +145,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
     }
 
     /// Get description
+    #[allow(dead_code)]
     pub async fn description(&self) -> Result<String> {
         let call = IFluxAggregator::descriptionCall {};
         let tx = TransactionRequest::default()
@@ -160,6 +161,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
     }
 
     /// Get oracle round state
+    #[allow(dead_code)]
     pub async fn oracle_round_state(&self, oracle: Address, queried_round_id: u32) -> Result<IFluxAggregator::oracleRoundStateReturn> {
         let call = IFluxAggregator::oracleRoundStateCall {
             _oracle: oracle,

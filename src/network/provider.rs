@@ -3,11 +3,10 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use alloy::{
-    network::{EthereumWallet, Ethereum},
     primitives::Address,
     providers::{Provider, ProviderBuilder, RootProvider},
     signers::local::PrivateKeySigner,
-    transports::{http::{Client, Http}, Transport},
+    transports::http::{Client, Http},
 };
 use thiserror::Error;
 use tracing::{error, info};
@@ -22,6 +21,7 @@ pub enum NetworkError {
     NetworkNotFound(String),
 
     #[error("Provider error: {0}")]
+    #[allow(dead_code)]
     ProviderError(String),
 
     #[error("RPC connection failed: {0}")]
@@ -148,6 +148,7 @@ impl NetworkManager {
     }
     
     /// Get a signer for a given network
+    #[allow(dead_code)]
     pub fn get_signer(&self, network_name: &str) -> Result<Arc<EthProvider>> {
         // For backward compatibility, check if we have a private key
         if self.private_keys.contains_key(network_name) {

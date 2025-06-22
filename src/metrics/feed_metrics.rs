@@ -152,13 +152,6 @@ impl FeedMetrics {
         );
     }
 
-    /// Update staleness metric for a data source
-    pub fn update_staleness(feed_name: &str, network: &str, data_type: &str, seconds: f64) {
-        DATA_STALENESS_SECONDS
-            .with_label_values(&[feed_name, network, data_type])
-            .set(seconds);
-    }
-
     /// Record a successful contract update
     pub fn record_contract_update(feed_name: &str, network: &str) {
         let timestamp = chrono::Utc::now().timestamp() as f64;

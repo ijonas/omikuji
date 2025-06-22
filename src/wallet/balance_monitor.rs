@@ -90,14 +90,4 @@ impl WalletBalanceMonitor {
             }
         }
     }
-
-    /// Update balance immediately (called after transactions)
-    pub async fn update_balance_for_network(&self, network_name: &str) {
-        if let Err(e) = self.update_network_balance(network_name).await {
-            error!(
-                "Failed to update wallet balance after transaction for {}: {}",
-                network_name, e
-            );
-        }
-    }
 }

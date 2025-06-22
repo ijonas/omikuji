@@ -66,6 +66,7 @@ impl FeedLogRepository {
     }
 
     /// Gets the latest feed log entry for a specific feed
+    #[allow(dead_code)]
     pub async fn get_latest(&self, feed_name: &str, network_name: &str) -> Result<Option<FeedLog>> {
         let record = sqlx::query_as::<_, FeedLog>(
             r#"
@@ -95,6 +96,7 @@ impl FeedLogRepository {
     }
 
     /// Gets feed logs within a time range
+    #[allow(dead_code)]
     pub async fn get_by_time_range(
         &self,
         feed_name: &str,
@@ -134,6 +136,7 @@ impl FeedLogRepository {
     }
 
     /// Counts feed logs for a specific feed
+    #[allow(dead_code)]
     pub async fn count(&self, feed_name: &str, network_name: &str) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
             r#"
@@ -152,6 +155,7 @@ impl FeedLogRepository {
     }
 
     /// Deletes feed logs older than the specified number of days
+    #[allow(dead_code)]
     pub async fn delete_older_than(&self, feed_name: &str, network_name: &str, days: u32) -> Result<u64> {
         let cutoff_date = Utc::now() - Duration::days(days as i64);
         
@@ -183,6 +187,7 @@ impl FeedLogRepository {
     }
 
     /// Deletes all feed logs older than the specified date, regardless of feed
+    #[allow(dead_code)]
     pub async fn delete_all_older_than(&self, cutoff_date: DateTime<Utc>) -> Result<u64> {
         let result = sqlx::query(
             r#"
@@ -208,6 +213,7 @@ impl FeedLogRepository {
     }
 
     /// Gets a summary of feed logs grouped by feed and network
+    #[allow(dead_code)]
     pub async fn get_summary(&self) -> Result<Vec<FeedSummary>> {
         let summaries = sqlx::query_as::<_, FeedSummary>(
             r#"
@@ -233,6 +239,7 @@ impl FeedLogRepository {
 
 /// Summary statistics for a feed
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct FeedSummary {
     pub feed_name: String,
     pub network_name: String,

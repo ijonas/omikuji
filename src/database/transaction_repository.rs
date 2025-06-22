@@ -11,6 +11,7 @@ pub struct TransactionLogRepository {
 
 /// Transaction log entry from database
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct TransactionLog {
     pub id: i32,
     pub tx_hash: String,
@@ -32,6 +33,7 @@ pub struct TransactionLog {
 
 /// Transaction statistics
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct TransactionStats {
     pub feed_name: String,
     pub network_name: String,
@@ -105,6 +107,7 @@ impl TransactionLogRepository {
     }
 
     /// Get transaction logs for a specific feed
+    #[allow(dead_code)]
     pub async fn get_by_feed(
         &self,
         feed_name: &str,
@@ -130,6 +133,7 @@ impl TransactionLogRepository {
     }
 
     /// Get transaction statistics for all feeds
+    #[allow(dead_code)]
     pub async fn get_stats(&self) -> Result<Vec<TransactionStats>> {
         let stats = sqlx::query_as::<_, TransactionStats>(
             r#"
@@ -145,6 +149,7 @@ impl TransactionLogRepository {
     }
 
     /// Get daily gas costs for a specific network
+    #[allow(dead_code)]
     pub async fn get_daily_costs(
         &self,
         network_name: &str,
@@ -177,6 +182,7 @@ impl TransactionLogRepository {
     }
 
     /// Get high gas consumption transactions
+    #[allow(dead_code)]
     pub async fn get_high_gas_transactions(
         &self,
         threshold_gwei: f64,
@@ -200,6 +206,7 @@ impl TransactionLogRepository {
     }
 
     /// Get inefficient transactions (low gas efficiency)
+    #[allow(dead_code)]
     pub async fn get_inefficient_transactions(
         &self,
         efficiency_threshold: f64,
@@ -223,6 +230,7 @@ impl TransactionLogRepository {
     }
 
     /// Clean up old transaction logs
+    #[allow(dead_code)]
     pub async fn cleanup_old_logs(&self, days_to_keep: i32) -> Result<u64> {
         let result = sqlx::query(
             r#"
@@ -246,6 +254,7 @@ impl TransactionLogRepository {
 
 /// Daily gas cost summary
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct DailyGasCost {
     pub date: chrono::NaiveDate,
     pub network_name: String,
