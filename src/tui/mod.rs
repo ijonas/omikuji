@@ -660,13 +660,7 @@ fn render_overview(f: &mut Frame, area: Rect, dash: &DashboardState) {
         .block(Block::default().borders(Borders::ALL).title(Span::styled("Overview", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
         .style(Style::default().bg(Color::Black));
     f.render_widget(table, chunks[0]);
-    // Right: Sparklines (ETH price, Gas price, Response time only)
-    let price_hist = dash.eth_price_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
-    let spark_price = Sparkline::default()
-        .block(Block::default().borders(Borders::ALL).title(Span::styled("ETH Price (USD)", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
-        .data(&price_hist)
-        .style(Style::default().fg(Color::Yellow).bg(Color::Black))
-        .bar_set(bar::NINE_LEVELS);
+    // Right: Sparklines (Gas price and Response time only)
     let gas_hist = dash.gas_price_gwei_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
     let resp_hist = dash.response_time_ms_hist.as_vec();
     let spark_gas = Sparkline::default()
@@ -681,11 +675,10 @@ fn render_overview(f: &mut Frame, area: Rect, dash: &DashboardState) {
         .bar_set(bar::NINE_LEVELS);
     let spark_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(34)])
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[1]);
-    f.render_widget(spark_price, spark_chunks[0]);
-    f.render_widget(spark_gas, spark_chunks[1]);
-    f.render_widget(spark_resp, spark_chunks[2]);
+    f.render_widget(spark_gas, spark_chunks[0]);
+    f.render_widget(spark_resp, spark_chunks[1]);
 }
 
 // --- Live Panel Renderer ---
