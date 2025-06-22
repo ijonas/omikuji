@@ -25,6 +25,5 @@ pub async fn update_metrics_from_stats(dashboard: &Arc<RwLock<DashboardState>>, 
     }
     dash.metrics.tx_count = total_txs;
     dash.metrics.last_tx_cost = last_tx_cost;
-    // Optionally, you could add avg_tx_cost if you want
-    // dash.metrics.avg_tx_cost = if cost_count > 0 { Some(total_cost_eth / cost_count as f64) } else { None };
+    dash.metrics.avg_tx_cost = if cost_count > 0 { Some(total_cost_eth / cost_count as f64) } else { None };
 }

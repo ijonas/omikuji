@@ -60,6 +60,7 @@ pub struct MetricsState {
     pub error_count: usize,
     pub tx_count: usize,
     pub last_tx_cost: Option<f64>,
+    pub avg_tx_cost: Option<f64>, // <-- Added field
     // --- Added for live metrics ---
     pub update_success_count: usize, // total successful updates
     pub update_total_count: usize,   // total attempted updates
@@ -609,13 +610,15 @@ fn render_overview(f: &mut Frame, area: Rect, dash: &DashboardState) {
     let m = &dash.metrics;
     let avg_response = dash.response_time_ms_hist.as_vec();
     let avg_response = if avg_response.is_empty() { 0 } else { avg_response.iter().sum::<u64>() / avg_response.len() as u64 };
-    let avg_tx_cost = dash.metrics.last_tx_cost.map(|c| format!("{c:.4} ETH")).unwrap_or("-".to_string());
+    let avg_tx_cost = dash.metrics.avg_tx_cost.map(|c| format!("{c:.4} ETH")).unwrap_or("-".to_string());
+    let last_tx_cost = dash.metrics.last_tx_cost.map(|c| format!("{c:.4} ETH")).unwrap_or("-".to_string());
     let rows = vec![
         Row::new(vec![Cell::from("Total Feeds"), Cell::from(m.feed_count.to_string())]),
         Row::new(vec![Cell::from("Active Errors"), Cell::from(m.error_count.to_string())]),
         Row::new(vec![Cell::from("Total Txs Today"), Cell::from(m.tx_count.to_string())]),
         Row::new(vec![Cell::from("Total Updates"), Cell::from(m.update_total_count.to_string())]),
         Row::new(vec![Cell::from("Avg Tx Cost"), Cell::from(avg_tx_cost)]),
+        Row::new(vec![Cell::from("Last Tx Cost"), Cell::from(last_tx_cost)]),
         Row::new(vec![Cell::from("Avg Response Time"), Cell::from(format!("{avg_response} ms"))]),
         Row::new(vec![Cell::from("Max Data Staleness"), Cell::from(Span::styled(
             format!("{:.1} s", dash.metrics.avg_staleness_secs),
