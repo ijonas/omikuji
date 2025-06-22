@@ -310,15 +310,13 @@ async fn run_app<B: ratatui::backend::Backend>(
         let dash = dashboard.read().await.clone();
         terminal.draw(|f| {
             let size = f.size();
-            // Layout: Overview (top), Main panel (tabs), Network bar, Command input, Logs
+            // Layout: Overview (top), Main panel (tabs), Logs (no command input)
             let layout = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(1)
                 .constraints([
                     Constraint::Length(9), // Overview panel (fixed height)
                     Constraint::Min(8),    // Main panel (tabs)
-                    Constraint::Length(1), // Network bar
-                    Constraint::Length(if dash.input_mode { 3 } else { 0 }), // Command input
                     Constraint::Length((size.height / 3).max(5)), // Logs
                 ])
                 .split(size);
@@ -335,79 +333,20 @@ async fn run_app<B: ratatui::backend::Backend>(
                 1 => render_panel_feeds(f, layout[1], &dash),
                 _ => {},
             }
-            // Network bar
-            render_network_bar(f, layout[2], &dash);
-            // Command input (if active)
-            if dash.input_mode {
-                render_command_input(f, layout[3], &dash);
-            }
             // Logs
-            render_logs(f, layout[4], &dash);
+            render_logs(f, layout[2], &dash);
             // Help overlay (if active)
             if dash.show_help {
-                render_help_overlay(f, layout[5], &dash);
+                render_help_overlay(f, size, &dash);
             }
         })?;
         // Handle input
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
         // --- Updated Key Handling and Command Parsing ---
-        // In run_app event loop, after event::poll:
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 let mut dash = dashboard.write().await;
-                if dash.input_mode {
-                    match key.code {
-                        KeyCode::Esc => { dash.input_mode = false; dash.input_buffer.clear(); },
-                        KeyCode::Enter => {
-                            let cmd = dash.input_buffer.trim().to_string();
-                            dash.input_mode = false;
-                            dash.input_buffer.clear();
-                            // Handle commands
-                            match cmd.split_whitespace().next() {
-                                Some("ping") => {
-                                    let net = cmd.split_whitespace().nth(1).unwrap_or("");
-                                    dash.logs.push_back(LogEntry {
-                                        timestamp: Local::now(),
-                                        level: LogLevel::Info,
-                                        target: "cmd".to_string(),
-                                        message: format!("Pinging network: {net}"),
-                                });
-                                },
-                                Some("txcost") => {
-                                    let feed = cmd.split_whitespace().nth(1).unwrap_or("");
-                                    dash.logs.push_back(LogEntry {
-                                        timestamp: Local::now(),
-                                        level: LogLevel::Info,
-                                        target: "cmd".to_string(),
-                                        message: format!("Tx cost for feed: {feed}"),
-                                    });
-                                },
-                                Some("clear") => {
-                                    dash.logs.clear();
-                                },
-                                Some("help") => {
-                                    dash.logs.push_back(LogEntry {
-                                        timestamp: Local::now(),
-                                        level: LogLevel::Info,
-                                        target: "cmd".to_string(),
-                                        message: "Available: ping <network>, txcost <feed>, clear, help".to_string(),
-                                    });
-                                },
-                                _ => {
-                                    dash.logs.push_back(LogEntry {
-                                        timestamp: Local::now(),
-                                        level: LogLevel::Warn,
-                                        target: "cmd".to_string(),
-                                        message: format!("Unknown command: {cmd}"),
-                                    });
-                                }
-                            }
-                        },
-                        KeyCode::Char(c) => { dash.input_buffer.push(c); },
-                        KeyCode::Backspace => { dash.input_buffer.pop(); },
-                        _ => {}
-                    }
-                } else if dash.show_help {
+                if dash.show_help {
                     if let KeyCode::Char('?') | KeyCode::Esc = key.code {
                         dash.show_help = false;
                     }
@@ -415,7 +354,6 @@ async fn run_app<B: ratatui::backend::Backend>(
                     match key.code {
                         KeyCode::Char('q') => break,
                         KeyCode::Tab => { dash.selected_panel = (dash.selected_panel + 1) % 2; },
-                        KeyCode::Char(':') => { dash.input_mode = true; dash.input_buffer.clear(); },
                         KeyCode::Char('?') => { dash.show_help = !dash.show_help; },
                         KeyCode::Up => {
                             dash.autoscroll = false;
@@ -790,37 +728,6 @@ fn render_panel_feeds(f: &mut Frame, area: Rect, dash: &DashboardState) {
     let alerts = List::new(items)
         .block(Block::default().borders(Borders::ALL).title(Span::styled("Alerts", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
     f.render_widget(alerts, chunks[1]);
-}
-
-// --- Network Bar Renderer ---
-fn render_network_bar(f: &mut Frame, area: Rect, dash: &DashboardState) {
-    use ratatui::widgets::{Paragraph, Block, Borders};
-    use ratatui::style::{Style, Color, Modifier};
-    use ratatui::text::Span;
-    let mut spans = Vec::new();
-    for (i, net) in dash.networks.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("  |  "));
-        }
-        let color = if net.rpc_ok { Color::Green } else { Color::Red };
-        spans.push(Span::styled(format!("[{}]", net.name), Style::default().fg(color).add_modifier(Modifier::BOLD)));
-        spans.push(Span::raw(format!(" ✓ | chain_id: {} | block: {}",
-            net.chain_id.map(|id| id.to_string()).unwrap_or("-".to_string()),
-            net.block_number.map(|b| b.to_string()).unwrap_or("-".to_string())
-        )));
-    }
-    let bar = Paragraph::new(ratatui::text::Line::from(spans))
-        .block(Block::default().borders(Borders::ALL).title("Network"));
-    f.render_widget(bar, area);
-}
-
-// --- Command Input Renderer ---
-fn render_command_input(f: &mut Frame, area: Rect, dash: &DashboardState) {
-    use ratatui::widgets::{Paragraph, Block, Borders};
-    use ratatui::style::{Style, Color};
-    let input = Paragraph::new(dash.input_buffer.clone())
-        .block(Block::default().title("Command").borders(Borders::ALL).border_style(Style::default().fg(Color::Magenta)));
-    f.render_widget(input, area);
 }
 
 // --- Help Overlay Renderer ---
