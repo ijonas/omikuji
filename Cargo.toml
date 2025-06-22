@@ -24,7 +24,7 @@ tokio = { version = "1.35", features = ["full"] }
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["chrono"] }
 
 # Ethereum interaction
 alloy = { version = "0.8", features = ["full", "node-bindings", "signer-local", "provider-http", "provider-ws", "contract", "rpc"] }
@@ -53,6 +53,11 @@ tokio-cron-scheduler = "0.9"
 
 # Utilities
 lazy_static = "1.4"
+
+# TUI
+ratatui = "0.26"
+crossterm = "0.27"
+regex = "1.11.1"
 
 [dev-dependencies]
 tempfile = "3.9"

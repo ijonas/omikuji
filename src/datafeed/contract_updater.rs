@@ -193,6 +193,7 @@ impl<'a> ContractUpdater<'a> {
         &self,
         datafeed: &Datafeed,
         value: f64,
+        dashboard: Option<Arc<tokio::sync::RwLock<crate::tui::DashboardState>>>,
     ) -> Result<()> {
         info!(
             "Submitting value {} to contract {} on network {}",
@@ -255,6 +256,18 @@ impl<'a> ContractUpdater<'a> {
                 
                 // Record contract update in metrics
                 FeedMetrics::record_contract_update(&datafeed.name, &datafeed.networks);
+                
+                // --- Update dashboard with tx cost and count ---
+                if let Some(dash) = dashboard {
+                    // Calculate cost in ETH
+                    let gas_used = receipt.gas_used;
+                    let gas_price = receipt.effective_gas_price;
+                    let cost_eth = (gas_used as f64) * (gas_price as f64) / 1e18;
+                    crate::tui::update::set_last_tx_cost(&dash, cost_eth).await;
+                    // Increment tx_count
+                    let mut dash_w = dash.write().await;
+                    dash_w.metrics.tx_count += 1;
+                }
                 
                 Ok(())
             }
