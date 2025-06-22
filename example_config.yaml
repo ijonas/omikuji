@@ -37,3 +37,9 @@ datafeeds:
 database_cleanup:
   enabled: true              # Enable automatic cleanup (default: true)
   schedule: "0 0 * * * *"   # Cron schedule - every hour at minute 0 (default)
+
+# Key storage configuration
+key_storage:
+  storage_type: env          # "keyring" or "env" (default: env for backward compatibility)
+  keyring:
+    service: omikuji         # Service name for keyring (default: omikuji)

@@ -148,9 +148,22 @@ cargo test
         feed_url: https://api.example.com/price
         feed_json_path: data.price
 
-  2. Set your private key:
+  2. Set up your private key (choose one method):
+
+    **Option A: OS Keyring (Recommended)**
+    ```bash
+    # Import a private key for a network
+    omikuji key import --network ethereum-mainnet
+    # You'll be prompted to enter the private key securely
     
+    # Or import from a file
+    omikuji key import --network ethereum-mainnet --file /path/to/key.txt
+    ```
+
+    **Option B: Environment Variable (Legacy)**
+    ```bash
     export OMIKUJI_PRIVATE_KEY=your_private_key_here
+    ```
 
   3. Run Omikuji:
     
@@ -158,10 +171,18 @@ cargo test
 
   🔧 Command Line Options
 
+  **General Options:**
   - -c, --config <FILE>: Path to configuration file
   - -p, --private-key-env <ENV_VAR>: Private key environment variable name (default: OMIKUJI_PRIVATE_KEY)
   - -V, --version: Display version information
   - -h, --help: Display help information
+
+  **Key Management Commands:**
+  - `omikuji key import`: Import a private key to the OS keyring
+  - `omikuji key export`: Export a private key (with confirmation)
+  - `omikuji key remove`: Remove a private key from keyring
+  - `omikuji key list`: List available keys
+  - `omikuji key migrate`: Migrate keys from environment variables to keyring
 
 ## 📊 Technical Specifications
 

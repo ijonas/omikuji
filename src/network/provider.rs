@@ -8,11 +8,13 @@ use alloy::{
     transports::http::{Client, Http},
 };
 use anyhow::{Context, Result};
+use secrecy::ExposeSecret;
 use thiserror::Error;
 use tracing::{error, info};
 use url::Url;
 
 use crate::config::models::Network;
+use crate::wallet::key_storage::KeyStorage;
 
 /// Errors that can occur when interacting with network providers
 #[derive(Debug, Error)]
@@ -109,6 +111,50 @@ impl NetworkManager {
 
         info!(
             "Successfully loaded wallet for network {} with address {}",
+            network_name, wallet_address
+        );
+
+        Ok(())
+    }
+
+    /// Load wallet from key storage
+    pub async fn load_wallet_from_key_storage(
+        &mut self,
+        network_name: &str,
+        key_storage: &dyn KeyStorage,
+    ) -> Result<()> {
+        info!(
+            "Loading wallet from key storage for network {}",
+            network_name
+        );
+
+        // Check if the network exists
+        if !self.providers.contains_key(network_name) {
+            return Err(NetworkError::NetworkNotFound(network_name.to_string()).into());
+        }
+
+        let private_key_secret = key_storage
+            .get_key(network_name)
+            .await
+            .with_context(|| format!("Failed to retrieve key for network {}", network_name))?;
+
+        let private_key = private_key_secret.expose_secret();
+
+        let signer = private_key
+            .parse::<PrivateKeySigner>()
+            .with_context(|| "Failed to parse private key as signer")?;
+
+        // Store the wallet address
+        let wallet_address = signer.address();
+        self.wallet_addresses
+            .insert(network_name.to_string(), wallet_address);
+
+        // Store the private key (we'll create providers with wallets on demand)
+        self.private_keys
+            .insert(network_name.to_string(), private_key.to_string());
+
+        info!(
+            "Successfully loaded wallet for network {} with address {} from key storage",
             network_name, wallet_address
         );
 
