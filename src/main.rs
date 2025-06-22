@@ -13,6 +13,7 @@ mod gas;
 mod metrics;
 mod network;
 mod wallet;
+mod ui;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -36,6 +37,14 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Prepare version string for ASCII art
+    let version = format!("Omikuji v{}", env!("CARGO_PKG_VERSION"));
+    // The ASCII art is 100 chars wide, so center the version string
+    let width = 100;
+    let version_line = format!("{:^width$}", version, width=width);
+    let welcome = ui::welcome_screen::WELCOME_SCREEN.replace("{version_line}", &version_line);
+    println!("{}", welcome);
+
     // Parse command line arguments first
     // This allows --version and --help to work without any side effects
     let args = Args::parse();
