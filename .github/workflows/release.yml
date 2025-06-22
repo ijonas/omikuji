@@ -210,6 +210,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download all release assets
         uses: actions/github-script@v7
         with:
