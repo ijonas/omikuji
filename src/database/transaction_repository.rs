@@ -11,6 +11,7 @@ pub struct TransactionLogRepository {
 
 /// Transaction log entry from database
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct TransactionLog {
     pub id: i32,
     pub tx_hash: String,
@@ -19,7 +20,7 @@ pub struct TransactionLog {
     pub gas_limit: i64,
     pub gas_used: i64,
     pub gas_price_gwei: f64,
-    pub total_cost_wei: String,  // Store as string to avoid BigDecimal issues
+    pub total_cost_wei: String, // Store as string to avoid BigDecimal issues
     pub efficiency_percent: f64,
     pub tx_type: String,
     pub status: String,
@@ -32,6 +33,7 @@ pub struct TransactionLog {
 
 /// Transaction statistics
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct TransactionStats {
     pub feed_name: String,
     pub network_name: String,
@@ -56,7 +58,7 @@ impl TransactionLogRepository {
     /// Save a transaction log entry
     pub async fn save_transaction(&self, details: TransactionDetails) -> Result<i32> {
         let total_cost_wei = details.total_cost_wei.to_string();
-        
+
         debug!(
             "Attempting to save transaction log: feed={}, network={}, tx_hash={}, gas_used={}, gas_price={:.2} gwei, status={}, efficiency={:.1}%",
             details.feed_name, details.network, details.tx_hash, details.gas_used, details.gas_price_gwei, details.status, details.efficiency_percent
@@ -78,7 +80,7 @@ impl TransactionLogRepository {
                 block_number = EXCLUDED.block_number,
                 error_message = EXCLUDED.error_message
             RETURNING id
-            "#
+            "#,
         )
         .bind(&details.tx_hash)
         .bind(&details.feed_name)
@@ -105,6 +107,7 @@ impl TransactionLogRepository {
     }
 
     /// Get transaction logs for a specific feed
+    #[allow(dead_code)]
     pub async fn get_by_feed(
         &self,
         feed_name: &str,
@@ -117,7 +120,7 @@ impl TransactionLogRepository {
             WHERE feed_name = $1 AND network_name = $2
             ORDER BY created_at DESC
             LIMIT $3
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -130,12 +133,13 @@ impl TransactionLogRepository {
     }
 
     /// Get transaction statistics for all feeds
+    #[allow(dead_code)]
     pub async fn get_stats(&self) -> Result<Vec<TransactionStats>> {
         let stats = sqlx::query_as::<_, TransactionStats>(
             r#"
             SELECT * FROM transaction_stats
             ORDER BY network_name, feed_name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await
@@ -145,6 +149,7 @@ impl TransactionLogRepository {
     }
 
     /// Get daily gas costs for a specific network
+    #[allow(dead_code)]
     pub async fn get_daily_costs(
         &self,
         network_name: &str,
@@ -165,7 +170,7 @@ impl TransactionLogRepository {
             WHERE network_name = $1 
                 AND date >= CURRENT_DATE - INTERVAL '$2 days'
             ORDER BY date DESC, feed_name
-            "#
+            "#,
         )
         .bind(network_name)
         .bind(days)
@@ -177,6 +182,7 @@ impl TransactionLogRepository {
     }
 
     /// Get high gas consumption transactions
+    #[allow(dead_code)]
     pub async fn get_high_gas_transactions(
         &self,
         threshold_gwei: f64,
@@ -188,7 +194,7 @@ impl TransactionLogRepository {
             WHERE gas_price_gwei > $1
             ORDER BY gas_price_gwei DESC, created_at DESC
             LIMIT $2
-            "#
+            "#,
         )
         .bind(threshold_gwei)
         .bind(limit)
@@ -200,6 +206,7 @@ impl TransactionLogRepository {
     }
 
     /// Get inefficient transactions (low gas efficiency)
+    #[allow(dead_code)]
     pub async fn get_inefficient_transactions(
         &self,
         efficiency_threshold: f64,
@@ -211,7 +218,7 @@ impl TransactionLogRepository {
             WHERE efficiency_percent < $1 AND status = 'success'
             ORDER BY efficiency_percent ASC, created_at DESC
             LIMIT $2
-            "#
+            "#,
         )
         .bind(efficiency_threshold)
         .bind(limit)
@@ -223,12 +230,13 @@ impl TransactionLogRepository {
     }
 
     /// Clean up old transaction logs
+    #[allow(dead_code)]
     pub async fn cleanup_old_logs(&self, days_to_keep: i32) -> Result<u64> {
         let result = sqlx::query(
             r#"
             DELETE FROM transaction_log
             WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '$1 days'
-            "#
+            "#,
         )
         .bind(days_to_keep)
         .execute(&self.pool)
@@ -246,6 +254,7 @@ impl TransactionLogRepository {
 
 /// Daily gas cost summary
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct DailyGasCost {
     pub date: chrono::NaiveDate,
     pub network_name: String,
@@ -253,6 +262,6 @@ pub struct DailyGasCost {
     pub transaction_count: i64,
     pub total_gas_used: i64,
     pub avg_gas_price_gwei: f64,
-    pub total_cost_wei: String,  // Store as string to avoid BigDecimal issues
+    pub total_cost_wei: String, // Store as string to avoid BigDecimal issues
     pub avg_efficiency_percent: f64,
 }

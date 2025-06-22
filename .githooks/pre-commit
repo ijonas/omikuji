@@ -1,0 +1,48 @@
+#!/bin/sh
+# Pre-commit hook for Omikuji
+# Runs cargo fmt and cargo clippy before allowing commits
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Check if we're in a Rust project
+if [ ! -f "Cargo.toml" ]; then
+    echo "Error: Cargo.toml not found. Are you in the project root?"
+    exit 1
+fi
+
+# Run cargo fmt check
+echo "Checking code formatting..."
+if ! cargo fmt -- --check; then
+    echo ""
+    echo "❌ Code formatting check failed!"
+    echo "Please run 'cargo fmt' to fix formatting issues."
+    exit 1
+fi
+echo "✅ Code formatting check passed"
+
+# Run cargo clippy
+echo ""
+echo "Running clippy linter..."
+if ! cargo clippy -- -D warnings; then
+    echo ""
+    echo "❌ Clippy check failed!"
+    echo "Please fix the issues reported by clippy."
+    exit 1
+fi
+echo "✅ Clippy check passed"
+
+# Optional: Run tests (commented out by default as it might take longer)
+# echo ""
+# echo "Running tests..."
+# if ! cargo test; then
+#     echo ""
+#     echo "❌ Tests failed!"
+#     echo "Please fix failing tests before committing."
+#     exit 1
+# fi
+# echo "✅ All tests passed"
+
+echo ""
+echo "✅ All pre-commit checks passed!"

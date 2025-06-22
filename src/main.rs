@@ -3,15 +3,16 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use tracing::{error, info, debug};
+use tracing::{debug, error, info};
 
 mod config;
-mod network;
 mod contracts;
+mod database;
 mod datafeed;
 mod gas;
-mod database;
 mod metrics;
+mod network;
+mod ui;
 mod wallet;
 
 /// Command line arguments
@@ -36,13 +37,21 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Prepare version string for ASCII art
+    let version = format!("Omikuji v{}", env!("CARGO_PKG_VERSION"));
+    // The ASCII art is 100 chars wide, so center the version string
+    let width = 100;
+    let version_line = format!("{:^width$}", version, width = width);
+    let welcome = ui::welcome_screen::WELCOME_SCREEN.replace("{version_line}", &version_line);
+    println!("{}", welcome);
+
     // Parse command line arguments first
     // This allows --version and --help to work without any side effects
     let args = Args::parse();
 
     // Initialize logging after argument parsing
     tracing_subscriber::fmt::init();
-    
+
     // Load .env file if it exists
     match dotenv::dotenv() {
         Ok(path) => info!("Loaded .env file from: {:?}", path),
@@ -66,15 +75,21 @@ async fn main() -> Result<()> {
     };
 
     // Display loaded configuration
-    info!("Loaded {} network(s) and {} datafeed(s)",
-          config.networks.len(), config.datafeeds.len());
+    info!(
+        "Loaded {} network(s) and {} datafeed(s)",
+        config.networks.len(),
+        config.datafeeds.len()
+    );
 
     for network in &config.networks {
         info!("Network: {} ({})", network.name, network.rpc_url);
     }
 
     for datafeed in &config.datafeeds {
-        info!("Datafeed: {} on network {}", datafeed.name, datafeed.networks);
+        info!(
+            "Datafeed: {} on network {}",
+            datafeed.name, datafeed.networks
+        );
     }
 
     // Initialize network connections
@@ -90,23 +105,32 @@ async fn main() -> Result<()> {
     };
 
     // Try to load wallets for all networks from environment variable
-    info!("Attempting to load wallet from environment variable: {}", args.private_key_env);
-    
+    info!(
+        "Attempting to load wallet from environment variable: {}",
+        args.private_key_env
+    );
+
     // Check if the environment variable exists
     if std::env::var(&args.private_key_env).is_ok() {
         info!("Environment variable {} found", args.private_key_env);
     } else {
         error!("Environment variable {} not found", args.private_key_env);
     }
-    
+
     for network in &config.networks {
-        match network_manager.load_wallet_from_env(&network.name, &args.private_key_env).await {
+        match network_manager
+            .load_wallet_from_env(&network.name, &args.private_key_env)
+            .await
+        {
             Ok(_) => {
                 info!("Loaded wallet for network {}", network.name);
-            },
+            }
             Err(e) => {
                 error!("Failed to load wallet for network {}: {}", network.name, e);
-                error!("Transactions on {} network will not be possible", network.name);
+                error!(
+                    "Transactions on {} network will not be possible",
+                    network.name
+                );
             }
         }
     }
@@ -122,7 +146,7 @@ async fn main() -> Result<()> {
             match database::establish_connection().await {
                 Ok(pool) => {
                     info!("Database connection established successfully");
-                    
+
                     // Run migrations
                     if let Err(e) = database::connection::run_migrations(&pool).await {
                         error!("Failed to run database migrations: {}", e);
@@ -150,16 +174,14 @@ async fn main() -> Result<()> {
     // Initialize cleanup manager if database is available
     let cleanup_manager = if let Some(ref pool) = database_pool {
         let repository = Arc::new(database::FeedLogRepository::new(pool.clone()));
-        let mut cleanup_manager = database::cleanup::CleanupManager::new(
-            config.clone(),
-            repository
-        ).await?;
-        
+        let mut cleanup_manager =
+            database::cleanup::CleanupManager::new(config.clone(), repository).await?;
+
         // Start cleanup scheduler
         if let Err(e) = cleanup_manager.start().await {
             error!("Failed to start cleanup scheduler: {}", e);
         }
-        
+
         Some(cleanup_manager)
     } else {
         None
@@ -172,7 +194,7 @@ async fn main() -> Result<()> {
     } else {
         datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
     };
-    
+
     feed_manager.start().await;
 
     // Start Prometheus metrics server
@@ -200,7 +222,10 @@ async fn main() -> Result<()> {
 
         match network_manager.get_block_number(&network.name).await {
             Ok(block_number) => info!("Network {} current block: {}", network.name, block_number),
-            Err(e) => error!("Failed to get block number for network {}: {}", network.name, e),
+            Err(e) => error!(
+                "Failed to get block number for network {}: {}",
+                network.name, e
+            ),
         }
     }
 

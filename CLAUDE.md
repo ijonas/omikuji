@@ -85,3 +85,11 @@ cargo clippy -- -D warnings
 # Generate documentation
 cargo doc --open
 ```
+
+## Project Documentation
+
+For comprehensive project documentation, see:
+- [Documentation Index](docs/README.md) - Complete documentation overview
+- [Architecture Reference](docs/reference/architecture.md) - System design details
+- [Configuration Reference](docs/reference/configuration.md) - All configuration options
+- [Contributing Guide](docs/development/contributing.md) - Development guidelines

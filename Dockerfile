@@ -25,12 +25,11 @@ RUN cargo build --release && \
 # Copy actual source code
 COPY src ./src
 
-# Copy migrations for SQLx compile-time verification
+# Copy migrations
 COPY migrations ./migrations
 
-# Build the application (only rebuilds if source changes)
-RUN touch src/main.rs && \
-    cargo build --release && \
+# Build the application
+RUN cargo build --release && \
     strip target/release/omikuji
 
 # Runtime stage
@@ -49,8 +48,12 @@ RUN groupadd -r -g 1000 omikuji && \
 # Copy binary from builder
 COPY --from=builder /build/target/release/omikuji /usr/local/bin/omikuji
 
-# Create config directory
-RUN mkdir -p /config && chown omikuji:omikuji /config
+# Copy migrations from builder
+COPY --from=builder /build/migrations /migrations
+
+# Create config directory and set permissions
+RUN mkdir -p /config && chown omikuji:omikuji /config && \
+    chown -R omikuji:omikuji /migrations
 
 # Switch to non-root user
 USER omikuji

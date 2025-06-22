@@ -1,9 +1,9 @@
-use crate::network::NetworkManager;
 use crate::metrics::FeedMetrics;
+use crate::network::NetworkManager;
 use alloy::primitives::utils::format_units;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{info, error, debug};
+use tracing::{debug, error, info};
 
 /// Monitors wallet balances across all networks
 pub struct WalletBalanceMonitor {
@@ -23,7 +23,7 @@ impl WalletBalanceMonitor {
     /// Start monitoring wallet balances
     pub async fn start(self) {
         let mut interval = interval(Duration::from_secs(self.update_interval_seconds));
-        
+
         info!(
             "Starting wallet balance monitor with {}s interval",
             self.update_interval_seconds
@@ -39,7 +39,7 @@ impl WalletBalanceMonitor {
     async fn update_all_balances(&self) {
         // Get all network names from the network manager
         let networks = self.network_manager.get_network_names();
-        
+
         for network_name in networks {
             if let Err(e) = self.update_network_balance(&network_name).await {
                 error!(
@@ -51,26 +51,29 @@ impl WalletBalanceMonitor {
     }
 
     /// Update balance for a specific network
-    async fn update_network_balance(&self, network_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_network_balance(
+        &self,
+        network_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Get the wallet address for this network
         let address = self.network_manager.get_wallet_address(network_name)?;
-        
+
         // Get the provider to query balance
         let provider = self.network_manager.get_provider(network_name)?;
-        
-        // Fetch the balance  
+
+        // Fetch the balance
         use alloy::providers::Provider;
         match provider.get_balance(address).await {
             Ok(balance) => {
                 let balance_wei = balance.to::<u128>();
-                
+
                 // Update Prometheus metric
                 FeedMetrics::set_wallet_balance(
                     network_name,
                     &format!("{:?}", address),
                     balance_wei,
                 );
-                
+
                 debug!(
                     "Updated wallet balance for {} on {}: {} wei ({} ETH)",
                     address,
@@ -78,7 +81,7 @@ impl WalletBalanceMonitor {
                     balance_wei,
                     format_units(balance, "ether").unwrap_or_else(|_| "error".to_string())
                 );
-                
+
                 Ok(())
             }
             Err(e) => {
@@ -88,16 +91,6 @@ impl WalletBalanceMonitor {
                 );
                 Err(Box::new(e))
             }
-        }
-    }
-
-    /// Update balance immediately (called after transactions)
-    pub async fn update_balance_for_network(&self, network_name: &str) {
-        if let Err(e) = self.update_network_balance(network_name).await {
-            error!(
-                "Failed to update wallet balance after transaction for {}: {}",
-                network_name, e
-            );
         }
     }
 }

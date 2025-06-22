@@ -1,13 +1,13 @@
-use crate::config::models::{OmikujiConfig, Datafeed};
-use crate::network::NetworkManager;
-use crate::database::{FeedLogRepository, DatabasePool, TransactionLogRepository};
+use super::contract_config::ContractConfigReader;
 use super::fetcher::Fetcher;
 use super::monitor::FeedMonitor;
-use super::contract_config::ContractConfigReader;
+use crate::config::models::{Datafeed, OmikujiConfig};
+use crate::database::{DatabasePool, FeedLogRepository, TransactionLogRepository};
+use crate::network::NetworkManager;
+use alloy::primitives::I256;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
-use tracing::{info, error};
-use alloy::primitives::I256;
+use tracing::{error, info};
 
 /// Manages all datafeed monitors
 pub struct FeedManager {
@@ -31,24 +31,30 @@ impl FeedManager {
             handles: Vec::new(),
         }
     }
-    
+
     /// Sets the database repository for feed logging
     pub fn with_repository(mut self, pool: DatabasePool) -> Self {
         self.repository = Some(Arc::new(FeedLogRepository::new(pool.clone())));
         self.tx_log_repo = Some(Arc::new(TransactionLogRepository::new(pool)));
         self
     }
-    
+
     /// Starts monitoring all configured datafeeds
     /// Each datafeed runs in its own tokio task
     pub async fn start(&mut self) {
-        info!("Starting feed manager with {} datafeeds", self.config.datafeeds.len());
-        
+        info!(
+            "Starting feed manager with {} datafeeds",
+            self.config.datafeeds.len()
+        );
+
         let contract_reader = ContractConfigReader::new(&self.network_manager);
-        
+
         for mut datafeed in self.config.datafeeds.clone() {
             // Configure the datafeed (either from contract or YAML)
-            match self.configure_datafeed(&mut datafeed, &contract_reader).await {
+            match self
+                .configure_datafeed(&mut datafeed, &contract_reader)
+                .await
+            {
                 Ok(_) => {
                     let handle = self.spawn_monitor(datafeed);
                     self.handles.push(handle);
@@ -59,10 +65,13 @@ impl FeedManager {
                 }
             }
         }
-        
-        info!("Feed manager initialization complete. {} feeds running.", self.handles.len());
+
+        info!(
+            "Feed manager initialization complete. {} feeds running.",
+            self.handles.len()
+        );
     }
-    
+
     /// Configures a datafeed by reading from contract or using YAML values
     /// Returns Ok(()) if successful, Err(feed_name) if the feed should be skipped
     async fn configure_datafeed(
@@ -72,7 +81,10 @@ impl FeedManager {
     ) -> Result<(), String> {
         if datafeed.read_contract_config {
             // Try to read from contract
-            match contract_reader.read_config(&datafeed.networks, &datafeed.contract_address).await {
+            match contract_reader
+                .read_config(&datafeed.networks, &datafeed.contract_address)
+                .await
+            {
                 Ok(contract_config) => {
                     self.apply_contract_config(datafeed, contract_config);
                     Ok(())
@@ -91,9 +103,13 @@ impl FeedManager {
             Ok(())
         }
     }
-    
+
     /// Applies contract configuration to a datafeed
-    fn apply_contract_config(&self, datafeed: &mut Datafeed, config: crate::datafeed::contract_config::ContractConfig) {
+    fn apply_contract_config(
+        &self,
+        datafeed: &mut Datafeed,
+        config: crate::datafeed::contract_config::ContractConfig,
+    ) {
         self.log_config_values(
             &datafeed.name,
             "contract config",
@@ -101,23 +117,23 @@ impl FeedManager {
             config.min_value,
             config.max_value,
         );
-        
+
         datafeed.decimals = Some(config.decimals);
         datafeed.min_value = Some(config.min_value);
         datafeed.max_value = Some(config.max_value);
     }
-    
+
     /// Logs datafeed configuration from YAML
     fn log_datafeed_config(&self, datafeed: &Datafeed, source: &str) {
         self.log_config_values(
             &datafeed.name,
             source,
             datafeed.decimals.unwrap_or(0),
-            datafeed.min_value.clone().unwrap_or(I256::ZERO),
-            datafeed.max_value.clone().unwrap_or(I256::ZERO),
+            datafeed.min_value.unwrap_or(I256::ZERO),
+            datafeed.max_value.unwrap_or(I256::ZERO),
         );
     }
-    
+
     /// Common logging for configuration values
     fn log_config_values(
         &self,
@@ -132,25 +148,25 @@ impl FeedManager {
             source, name, decimals, min_value, max_value
         );
     }
-    
+
     /// Spawns a monitor task for a single datafeed
     fn spawn_monitor(&self, datafeed: Datafeed) -> JoinHandle<()> {
         let monitor = FeedMonitor::new(
-            datafeed.clone(), 
+            datafeed.clone(),
             Arc::clone(&self.fetcher),
             Arc::clone(&self.network_manager),
             self.config.clone(),
             self.repository.clone(),
-            self.tx_log_repo.clone()
+            self.tx_log_repo.clone(),
         );
         let feed_name = datafeed.name.clone();
-        
+
         tokio::spawn(async move {
             info!("Spawning monitor task for datafeed '{}'", feed_name);
             monitor.start().await;
         })
     }
-    
+
     /// Waits for all monitors to complete (they run indefinitely)
     #[allow(dead_code)]
     pub async fn wait(&mut self) {

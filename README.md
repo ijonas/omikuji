@@ -102,8 +102,31 @@ docker run -v $(pwd)/config.yaml:/config/config.yaml \
 ```bash
 git clone https://github.com/ijonas/omikuji.git
 cd omikuji
+
+# Setup git hooks (optional but recommended for contributors)
+./.githooks/setup.sh
+
 cargo build --release
 sudo mv target/release/omikuji /usr/local/bin/
+```
+
+### Development Setup
+
+For contributors, we use git hooks to ensure code quality:
+
+```bash
+# Enable pre-commit hooks (runs cargo fmt and clippy)
+./.githooks/setup.sh
+
+# The pre-commit hook will:
+# - Check code formatting with `cargo fmt`
+# - Run linting with `cargo clippy`
+# - Prevent commits if issues are found
+
+# To run checks manually:
+cargo fmt --check
+cargo clippy -- -D warnings
+cargo test
 ```
 
 ## 🚀 Getting Started
@@ -173,11 +196,16 @@ sudo mv target/release/omikuji /usr/local/bin/
 
 ## 📚 Documentation
 
-  - [Gas Configuration Guide](docs/gas-configuration.md) - Detailed guide for configuring gas settings, transaction types, and fee strategies
-  - [Gas Monitoring Guide](docs/gas-monitoring.md) - Track gas consumption with Prometheus metrics and analyze costs
-  - [Prometheus Metrics Guide](docs/prometheus-metrics.md) - Complete reference for all exported metrics and monitoring setup
-  - [Database Setup Guide](docs/database-setup.md) - PostgreSQL setup, data retention, and monitoring
-  - [Debug Logging Guide](docs/debug-logging.md) - Enable detailed logging for troubleshooting database operations
-  - [Configuration Reference](specs/configuration.md) - Complete configuration file specification
+  For comprehensive documentation, see the [Documentation Index](docs/README.md).
+
+  ### Quick Links
+
+  - [Installation Guide](docs/getting-started/installation.md) - Binary, Docker, and source installation
+  - [Quick Start Tutorial](docs/getting-started/quickstart.md) - Get running in 5 minutes
+  - [Configuration Guide](docs/getting-started/configuration.md) - Basic configuration
+  - [Configuration Reference](docs/reference/configuration.md) - Complete configuration specification
+  - [Gas Configuration](docs/guides/gas-configuration.md) - Transaction types and fee strategies
+  - [Database Setup](docs/guides/database-setup.md) - PostgreSQL setup and monitoring
+  - [Prometheus Metrics](docs/guides/prometheus-metrics.md) - Monitoring and alerting
 
   For more information and contribution guidelines, visit: https://github.com/ijonas/omikuji

@@ -1,13 +1,16 @@
+use crate::config::models::{GasConfig, Network};
 use alloy::{
-    primitives::{U256, utils::{parse_units, format_units}},
+    primitives::{
+        utils::{format_units, parse_units},
+        U256,
+    },
     providers::Provider,
     rpc::types::TransactionRequest,
     transports::Transport,
 };
-use std::sync::Arc;
 use anyhow::Result;
-use tracing::{info, warn, error};
-use crate::config::models::{GasConfig, Network};
+use std::sync::Arc;
+use tracing::{error, info, warn};
 
 /// Gas estimate for a transaction
 #[derive(Debug, Clone)]
@@ -38,10 +41,7 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> GasEstimator<T, P> {
     }
 
     /// Estimate gas for a transaction
-    pub async fn estimate_gas(
-        &self,
-        tx: &TransactionRequest,
-    ) -> Result<GasEstimate> {
+    pub async fn estimate_gas(&self, tx: &TransactionRequest) -> Result<GasEstimate> {
         let gas_config = &self.network_config.gas_config;
 
         // Estimate gas limit
@@ -110,8 +110,13 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> GasEstimator<T, P> {
                 // Apply multiplier for safety margin
                 let multiplier = gas_config.gas_multiplier;
                 let estimated_u256 = U256::from(estimated);
-                let with_buffer = estimated_u256.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
-                info!("Estimated gas limit: {} (with {}x multiplier: {})", estimated, multiplier, with_buffer);
+                let with_buffer = estimated_u256
+                    .saturating_mul(U256::from((multiplier * 1000.0) as u64))
+                    / U256::from(1000);
+                info!(
+                    "Estimated gas limit: {} (with {}x multiplier: {})",
+                    estimated, multiplier, with_buffer
+                );
                 Ok(with_buffer)
             }
             Err(e) => {
@@ -139,10 +144,16 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> GasEstimator<T, P> {
                 // Apply multiplier
                 let multiplier = gas_config.gas_multiplier;
                 let gas_price_u256 = U256::from(gas_price);
-                let with_buffer = gas_price_u256.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
+                let with_buffer = gas_price_u256
+                    .saturating_mul(U256::from((multiplier * 1000.0) as u64))
+                    / U256::from(1000);
                 let gwei_price = format_units(with_buffer, "gwei")?;
-                info!("Network gas price: {} gwei (with {}x multiplier: {} gwei)", 
-                    format_units(gas_price_u256, "gwei")?, multiplier, gwei_price);
+                info!(
+                    "Network gas price: {} gwei (with {}x multiplier: {} gwei)",
+                    format_units(gas_price_u256, "gwei")?,
+                    multiplier,
+                    gwei_price
+                );
                 Ok(with_buffer)
             }
             Err(e) => {
@@ -158,16 +169,19 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> GasEstimator<T, P> {
     /// Estimate fees for EIP-1559 transactions
     async fn estimate_eip1559_fees(&self, gas_config: &GasConfig) -> Result<(U256, U256)> {
         // Check for manual overrides
-        let manual_max_fee = gas_config.max_fee_per_gas_gwei
+        let manual_max_fee = gas_config
+            .max_fee_per_gas_gwei
             .map(|gwei| parse_units(&gwei.to_string(), "gwei").map(Into::into))
             .transpose()?;
-        
-        let manual_priority_fee = gas_config.max_priority_fee_per_gas_gwei
+
+        let manual_priority_fee = gas_config
+            .max_priority_fee_per_gas_gwei
             .map(|gwei| parse_units(&gwei.to_string(), "gwei").map(Into::into))
             .transpose()?;
 
         if let (Some(max_fee), Some(priority_fee)) = (manual_max_fee, manual_priority_fee) {
-            info!("Using manual EIP-1559 fees: max_fee={} gwei, priority_fee={} gwei",
+            info!(
+                "Using manual EIP-1559 fees: max_fee={} gwei, priority_fee={} gwei",
                 gas_config.max_fee_per_gas_gwei.unwrap(),
                 gas_config.max_priority_fee_per_gas_gwei.unwrap()
             );
@@ -179,21 +193,25 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> GasEstimator<T, P> {
         match self.provider.get_gas_price().await {
             Ok(gas_price) => {
                 let multiplier = gas_config.gas_multiplier;
-                
+
                 // Estimate base fee and priority fee
                 // Priority fee is typically 1-2 gwei, we'll use 2 gwei as default
-                let base_priority_fee = manual_priority_fee
-                    .unwrap_or_else(|| parse_units("2", "gwei").unwrap().into());
-                
+                let base_priority_fee =
+                    manual_priority_fee.unwrap_or_else(|| parse_units("2", "gwei").unwrap().into());
+
                 // Max fee should be current gas price + priority fee + buffer
-                let base_max_fee = manual_max_fee
-                    .unwrap_or_else(|| U256::from(gas_price) + base_priority_fee);
+                let base_max_fee =
+                    manual_max_fee.unwrap_or_else(|| U256::from(gas_price) + base_priority_fee);
 
                 // Apply multiplier
-                let max_fee = base_max_fee.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
-                let priority_fee = base_priority_fee.saturating_mul(U256::from((multiplier * 1000.0) as u64)) / U256::from(1000);
+                let max_fee = base_max_fee.saturating_mul(U256::from((multiplier * 1000.0) as u64))
+                    / U256::from(1000);
+                let priority_fee = base_priority_fee
+                    .saturating_mul(U256::from((multiplier * 1000.0) as u64))
+                    / U256::from(1000);
 
-                info!("EIP-1559 fees: max_fee={} gwei, priority_fee={} gwei ({}x multiplier applied)",
+                info!(
+                    "EIP-1559 fees: max_fee={} gwei, priority_fee={} gwei ({}x multiplier applied)",
                     format_units(max_fee, "gwei")?,
                     format_units(priority_fee, "gwei")?,
                     multiplier
@@ -214,9 +232,13 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> GasEstimator<T, P> {
 
     /// Bump fees for a retry attempt
     pub fn bump_fees(&self, original: &GasEstimate, retry_count: u8) -> GasEstimate {
-        let bump_percent = self.network_config.gas_config.fee_bumping.fee_increase_percent;
+        let bump_percent = self
+            .network_config
+            .gas_config
+            .fee_bumping
+            .fee_increase_percent;
         let multiplier = 1.0 + (bump_percent / 100.0) * retry_count as f64;
-        
+
         GasEstimate {
             gas_limit: original.gas_limit, // Keep same gas limit
             gas_price: original.gas_price.map(|p| {

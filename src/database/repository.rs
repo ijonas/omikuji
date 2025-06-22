@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
+use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
-use anyhow::{Result, Context};
-use chrono::{DateTime, Utc, Duration};
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 use super::models::{FeedLog, NewFeedLog};
 
@@ -22,7 +22,7 @@ impl FeedLogRepository {
             "Attempting to save feed log: feed={}, network={}, value={}, timestamp={}, error_status={:?}, network_error={}",
             log.feed_name, log.network_name, log.feed_value, log.feed_timestamp, log.error_status_code, log.network_error
         );
-        
+
         let record = sqlx::query_as::<_, FeedLog>(
             r#"
             INSERT INTO feed_log (
@@ -45,7 +45,7 @@ impl FeedLogRepository {
                 error_status_code,
                 network_error,
                 created_at
-            "#
+            "#,
         )
         .bind(&log.feed_name)
         .bind(&log.network_name)
@@ -66,6 +66,7 @@ impl FeedLogRepository {
     }
 
     /// Gets the latest feed log entry for a specific feed
+    #[allow(dead_code)]
     pub async fn get_latest(&self, feed_name: &str, network_name: &str) -> Result<Option<FeedLog>> {
         let record = sqlx::query_as::<_, FeedLog>(
             r#"
@@ -83,7 +84,7 @@ impl FeedLogRepository {
             WHERE feed_name = $1 AND network_name = $2
             ORDER BY created_at DESC
             LIMIT 1
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -95,6 +96,7 @@ impl FeedLogRepository {
     }
 
     /// Gets feed logs within a time range
+    #[allow(dead_code)]
     pub async fn get_by_time_range(
         &self,
         feed_name: &str,
@@ -120,7 +122,7 @@ impl FeedLogRepository {
                 AND created_at >= $3 
                 AND created_at <= $4
             ORDER BY created_at DESC
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -134,13 +136,14 @@ impl FeedLogRepository {
     }
 
     /// Counts feed logs for a specific feed
+    #[allow(dead_code)]
     pub async fn count(&self, feed_name: &str, network_name: &str) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
             r#"
             SELECT COUNT(*)
             FROM feed_log
             WHERE feed_name = $1 AND network_name = $2
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -152,16 +155,22 @@ impl FeedLogRepository {
     }
 
     /// Deletes feed logs older than the specified number of days
-    pub async fn delete_older_than(&self, feed_name: &str, network_name: &str, days: u32) -> Result<u64> {
+    #[allow(dead_code)]
+    pub async fn delete_older_than(
+        &self,
+        feed_name: &str,
+        network_name: &str,
+        days: u32,
+    ) -> Result<u64> {
         let cutoff_date = Utc::now() - Duration::days(days as i64);
-        
+
         let result = sqlx::query(
             r#"
             DELETE FROM feed_log
             WHERE feed_name = $1 
                 AND network_name = $2
                 AND created_at < $3
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -171,7 +180,7 @@ impl FeedLogRepository {
         .context("Failed to delete old feed logs")?;
 
         let deleted_count = result.rows_affected();
-        
+
         if deleted_count > 0 {
             info!(
                 "Deleted {} old feed logs for feed '{}' on network '{}' (older than {} days)",
@@ -183,12 +192,13 @@ impl FeedLogRepository {
     }
 
     /// Deletes all feed logs older than the specified date, regardless of feed
+    #[allow(dead_code)]
     pub async fn delete_all_older_than(&self, cutoff_date: DateTime<Utc>) -> Result<u64> {
         let result = sqlx::query(
             r#"
             DELETE FROM feed_log
             WHERE created_at < $1
-            "#
+            "#,
         )
         .bind(cutoff_date)
         .execute(&self.pool)
@@ -196,7 +206,7 @@ impl FeedLogRepository {
         .context("Failed to delete old feed logs")?;
 
         let deleted_count = result.rows_affected();
-        
+
         if deleted_count > 0 {
             info!(
                 "Deleted {} old feed logs across all feeds (older than {})",
@@ -208,6 +218,7 @@ impl FeedLogRepository {
     }
 
     /// Gets a summary of feed logs grouped by feed and network
+    #[allow(dead_code)]
     pub async fn get_summary(&self) -> Result<Vec<FeedSummary>> {
         let summaries = sqlx::query_as::<_, FeedSummary>(
             r#"
@@ -233,6 +244,7 @@ impl FeedLogRepository {
 
 /// Summary statistics for a feed
 #[derive(Debug, Clone, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct FeedSummary {
     pub feed_name: String,
     pub network_name: String,

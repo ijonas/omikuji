@@ -27,16 +27,14 @@ mod tests {
         // We can't test actual connection without a running node
         // So we'll test the error handling
         let result = NetworkManager::new(&networks).await;
-        
+
         // The test will fail to connect, which is expected in unit tests
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_network_manager_invalid_url() {
-        let networks = vec![
-            create_test_network("invalid", "not-a-valid-url"),
-        ];
+        let networks = vec![create_test_network("invalid", "not-a-valid-url")];
 
         let result = NetworkManager::new(&networks).await;
         assert!(result.is_err());
@@ -49,7 +47,7 @@ mod tests {
 
         let result = manager.get_provider("non_existent");
         assert!(result.is_err());
-        
+
         match result {
             Err(e) => {
                 let error_msg = e.to_string();
@@ -66,7 +64,7 @@ mod tests {
 
         let result = manager.get_signer("non_existent");
         assert!(result.is_err());
-        
+
         match result {
             Err(e) => {
                 let error_msg = e.to_string();
@@ -83,12 +81,17 @@ mod tests {
 
         // Set a valid env var
         unsafe {
-            env::set_var("TEST_PRIVATE_KEY", "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
+            env::set_var(
+                "TEST_PRIVATE_KEY",
+                "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+            );
         }
 
-        let result = manager.load_wallet_from_env("test_network", "TEST_PRIVATE_KEY").await;
+        let result = manager
+            .load_wallet_from_env("test_network", "TEST_PRIVATE_KEY")
+            .await;
         assert!(result.is_err());
-        
+
         match result {
             Err(e) => {
                 let error_msg = e.to_string();

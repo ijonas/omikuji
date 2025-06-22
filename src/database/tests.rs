@@ -59,12 +59,12 @@ mod tests {
 // async fn test_save_and_retrieve_feed_log() {
 //     let pool = create_test_pool().await;
 //     let repo = FeedLogRepository::new(pool);
-//     
+//
 //     let log = NewFeedLog { ... };
 //     let saved = repo.save(log).await.unwrap();
-//     
+//
 //     assert!(saved.id > 0);
-//     
+//
 //     let retrieved = repo.get_latest("eth_usd", "ethereum").await.unwrap();
 //     assert!(retrieved.is_some());
 // }

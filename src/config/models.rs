@@ -1,6 +1,6 @@
+use alloy::primitives::I256;
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
-use alloy::primitives::I256;
 
 /// The main configuration structure for Omikuji
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -231,7 +231,10 @@ fn default_data_retention_days() -> u32 {
 fn validate_eth_address(address: &str) -> Result<(), ValidationError> {
     // Simple validation: check if it's a hex string starting with 0x and of correct length
     // For more comprehensive validation, we might need to check the checksum
-    if !address.starts_with("0x") || address.len() != 42 || !address[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+    if !address.starts_with("0x")
+        || address.len() != 42
+        || !address[2..].chars().all(|c| c.is_ascii_hexdigit())
+    {
         return Err(ValidationError::new("invalid_eth_address"));
     }
     Ok(())

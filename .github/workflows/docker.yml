@@ -2,12 +2,9 @@ name: Docker Build
 
 on:
   push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
   workflow_dispatch:
 
 env:
@@ -48,7 +45,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=sha,prefix={{branch}}-
+            type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image

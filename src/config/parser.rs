@@ -34,8 +34,7 @@ pub fn default_config_path() -> PathBuf {
 /// Loads and validates the Omikuji configuration
 pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<OmikujiConfig, ConfigError> {
     // Open the configuration file
-    let mut file = File::open(&config_path)
-        .map_err(ConfigError::FileError)?;
+    let mut file = File::open(&config_path).map_err(ConfigError::FileError)?;
 
     // Read the file content
     let mut content = String::new();
@@ -43,12 +42,10 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<OmikujiConfig, Conf
         .map_err(ConfigError::FileError)?;
 
     // Parse YAML
-    let config: OmikujiConfig = serde_yaml::from_str(&content)
-        .map_err(ConfigError::ParseError)?;
+    let config: OmikujiConfig = serde_yaml::from_str(&content).map_err(ConfigError::ParseError)?;
 
     // Validate the configuration
-    config.validate()
-        .map_err(ConfigError::ValidationError)?;
+    config.validate().map_err(ConfigError::ValidationError)?;
 
     // Check if networks referenced by datafeeds exist
     for datafeed in &config.datafeeds {

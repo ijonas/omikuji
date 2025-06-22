@@ -91,9 +91,22 @@ tag:
 ifndef VERSION
 	$(error VERSION is not set. Usage: make tag VERSION=x.y.z)
 endif
-	@echo "Tagging version v$(VERSION)"
+	@echo "Updating version to $(VERSION) in Cargo.toml..."
+	@# Update version in Cargo.toml (works on both macOS and Linux)
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		sed -i '' 's/^version = ".*"/version = "$(VERSION)"/' Cargo.toml; \
+	else \
+		sed -i 's/^version = ".*"/version = "$(VERSION)"/' Cargo.toml; \
+	fi
+	@echo "Running cargo check to update Cargo.lock..."
+	@cargo check --quiet
+	@echo "Committing version changes..."
+	@git add Cargo.toml Cargo.lock
+	@git commit -m "chore: bump version to $(VERSION)" || echo "No changes to commit"
+	@echo "Creating tag v$(VERSION)..."
 	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
-	@echo "Tag created. Push with: git push origin v$(VERSION)"
+	@echo "Version updated and tag created!"
+	@echo "Push with: git push && git push origin v$(VERSION)"
 
 # Build Docker image locally
 docker-build:
