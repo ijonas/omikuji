@@ -511,7 +511,8 @@ fn render_logs(f: &mut Frame, area: Rect, dash: &DashboardState) {
         }
         flat_lines.push(ListItem::new(Line::from(group_title)));
         if !collapsed {
-            for entry in entries.iter().rev() {
+            // CHANGED: iterate in normal order (oldest to newest)
+            for entry in entries.iter() {
                 if let Some(ref filter) = filter {
                     if !entry.message.to_lowercase().contains(filter) && !entry.target.to_lowercase().contains(filter) {
                         continue;
