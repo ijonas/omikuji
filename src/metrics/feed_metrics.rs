@@ -1,7 +1,5 @@
-use prometheus::{
-    register_gauge_vec, GaugeVec,
-};
 use lazy_static::lazy_static;
+use prometheus::{register_gauge_vec, GaugeVec};
 use tracing::{debug, warn};
 
 lazy_static! {
@@ -71,7 +69,7 @@ impl FeedMetrics {
         WALLET_BALANCE_WEI
             .with_label_values(&[network, address])
             .set(balance_wei as f64);
-        
+
         debug!(
             "Updated wallet balance for {} on {}: {} wei",
             address, network, balance_wei
@@ -83,16 +81,16 @@ impl FeedMetrics {
         FEED_VALUE
             .with_label_values(&[feed_name, network])
             .set(value);
-        
+
         FEED_LAST_UPDATE_TIMESTAMP
             .with_label_values(&[feed_name, network])
             .set(timestamp as f64);
-        
+
         // Reset staleness counter
         DATA_STALENESS_SECONDS
             .with_label_values(&[feed_name, network, "feed"])
             .set(0.0);
-        
+
         debug!(
             "Updated feed value for {} on {}: {} at timestamp {}",
             feed_name, network, value, timestamp
@@ -110,20 +108,20 @@ impl FeedMetrics {
         CONTRACT_VALUE
             .with_label_values(&[feed_name, network])
             .set(value);
-        
+
         CONTRACT_ROUND
             .with_label_values(&[feed_name, network])
             .set(round as f64);
-        
+
         CONTRACT_LAST_UPDATE_TIMESTAMP
             .with_label_values(&[feed_name, network])
             .set(timestamp as f64);
-        
+
         // Reset staleness counter
         DATA_STALENESS_SECONDS
             .with_label_values(&[feed_name, network, "contract"])
             .set(0.0);
-        
+
         debug!(
             "Updated contract value for {} on {}: {} (round {}) at timestamp {}",
             feed_name, network, value, round, timestamp
@@ -139,13 +137,13 @@ impl FeedMetrics {
             );
             return;
         }
-        
+
         let deviation_percent = ((feed_value - contract_value).abs() / contract_value) * 100.0;
-        
+
         FEED_DEVIATION_PERCENT
             .with_label_values(&[feed_name, network])
             .set(deviation_percent);
-        
+
         debug!(
             "Updated deviation for {} on {}: {:.2}% (feed: {}, contract: {})",
             feed_name, network, deviation_percent, feed_value, contract_value
@@ -158,7 +156,7 @@ impl FeedMetrics {
         CONTRACT_LAST_UPDATE_TIMESTAMP
             .with_label_values(&[feed_name, network])
             .set(timestamp);
-        
+
         debug!(
             "Recorded contract update for {} on {} at timestamp {}",
             feed_name, network, timestamp

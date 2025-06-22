@@ -1,11 +1,8 @@
-use prometheus::{
-    register_counter_vec, register_histogram_vec, register_gauge_vec,
-    CounterVec, HistogramVec, GaugeVec,
-};
+use alloy::{primitives::U256, rpc::types::TransactionReceipt};
 use lazy_static::lazy_static;
-use alloy::{
-    primitives::U256,
-    rpc::types::TransactionReceipt,
+use prometheus::{
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
 use tracing::{info, warn};
 
@@ -77,7 +74,7 @@ impl GasMetrics {
         // Get gas used and effective gas price
         let gas_used = receipt.gas_used;
         let effective_gas_price = U256::from(receipt.effective_gas_price);
-        
+
         // Calculate metrics
         let gas_used_f64 = gas_used as f64;
         let gas_limit_f64 = gas_limit.to::<u64>() as f64;

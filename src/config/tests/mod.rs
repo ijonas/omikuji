@@ -1,13 +1,14 @@
 #[cfg(test)]
 mod tests {
+    use crate::config::parser::{load_config, ConfigError};
     use std::io::Write;
     use tempfile::NamedTempFile;
-    use crate::config::parser::{load_config, ConfigError};
 
     // Helper function to create a temporary file with content
     fn create_temp_file(content: &str) -> NamedTempFile {
         let mut file = NamedTempFile::new().expect("Failed to create temp file");
-        file.write_all(content.as_bytes()).expect("Failed to write to temp file");
+        file.write_all(content.as_bytes())
+            .expect("Failed to write to temp file");
         file.flush().expect("Failed to flush temp file");
         file
     }
@@ -40,21 +41,30 @@ mod tests {
 
         assert_eq!(config.networks.len(), 2);
         assert_eq!(config.datafeeds.len(), 1);
-        
+
         assert_eq!(config.networks[0].name, "ethereum");
         assert_eq!(config.networks[0].rpc_url, "https://eth.llamarpc.com");
-        
+
         assert_eq!(config.datafeeds[0].name, "eth_usd");
         assert_eq!(config.datafeeds[0].networks, "ethereum");
         assert_eq!(config.datafeeds[0].check_frequency, 60);
-        assert_eq!(config.datafeeds[0].contract_address, "0x1234567890123456789012345678901234567890");
+        assert_eq!(
+            config.datafeeds[0].contract_address,
+            "0x1234567890123456789012345678901234567890"
+        );
         assert_eq!(config.datafeeds[0].contract_type, "fluxmon");
         assert!(config.datafeeds[0].read_contract_config);
         assert_eq!(config.datafeeds[0].minimum_update_frequency, 3600);
         assert_eq!(config.datafeeds[0].deviation_threshold_pct, 0.5);
-        assert_eq!(config.datafeeds[0].feed_url, "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=ETH&tsyms=USD");
+        assert_eq!(
+            config.datafeeds[0].feed_url,
+            "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=ETH&tsyms=USD"
+        );
         assert_eq!(config.datafeeds[0].feed_json_path, "RAW.ETH.USD.PRICE");
-        assert_eq!(config.datafeeds[0].feed_json_path_timestamp, Some("RAW.ETH.USD.LASTUPDATE".to_string()));
+        assert_eq!(
+            config.datafeeds[0].feed_json_path_timestamp,
+            Some("RAW.ETH.USD.LASTUPDATE".to_string())
+        );
     }
 
     #[test]
@@ -86,15 +96,15 @@ mod tests {
 
         assert_eq!(config.networks.len(), 1);
         assert_eq!(config.datafeeds.len(), 1);
-        
+
         assert_eq!(config.datafeeds[0].feed_json_path_timestamp, None);
         assert_eq!(config.datafeeds[0].decimals, Some(8));
-        
+
         // I256 values from YAML are parsed correctly
         use alloy::primitives::I256;
         let expected_min = I256::try_from(0).unwrap();
         let expected_max = I256::try_from(1000000000000i64).unwrap();
-        
+
         assert_eq!(config.datafeeds[0].min_value, Some(expected_min));
         assert_eq!(config.datafeeds[0].max_value, Some(expected_max));
     }
@@ -121,7 +131,7 @@ mod tests {
 
         let temp_file = create_temp_file(config_yaml);
         let result = load_config(temp_file.path());
-        
+
         assert!(result.is_err());
         // Just check that the validation fails, not exactly how
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
@@ -149,7 +159,7 @@ mod tests {
 
         let temp_file = create_temp_file(config_yaml);
         let result = load_config(temp_file.path());
-        
+
         assert!(result.is_err());
         // The error should be a parsing error since required fields are missing
         assert!(matches!(result, Err(ConfigError::ParseError(_))));
@@ -177,7 +187,7 @@ mod tests {
 
         let temp_file = create_temp_file(config_yaml);
         let result = load_config(temp_file.path());
-        
+
         assert!(result.is_err());
         assert!(matches!(result, Err(ConfigError::Other(_))));
         if let Err(ConfigError::Other(err)) = result {
@@ -209,7 +219,7 @@ mod tests {
 
         let temp_file = create_temp_file(config_yaml);
         let result = load_config(temp_file.path());
-        
+
         assert!(result.is_err());
         // Just check that validation fails, not how
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
@@ -226,7 +236,7 @@ mod tests {
 
         let temp_file = create_temp_file(config_yaml);
         let result = load_config(temp_file.path());
-        
+
         assert!(result.is_err());
         assert!(matches!(result, Err(ConfigError::ParseError(_))));
     }
@@ -253,7 +263,7 @@ mod tests {
 
         let temp_file = create_temp_file(config_yaml);
         let result = load_config(temp_file.path());
-        
+
         assert!(result.is_err());
         // Just check that validation fails, not how
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));

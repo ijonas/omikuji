@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
+use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
-use anyhow::{Result, Context};
-use chrono::{DateTime, Utc, Duration};
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 use super::models::{FeedLog, NewFeedLog};
 
@@ -22,7 +22,7 @@ impl FeedLogRepository {
             "Attempting to save feed log: feed={}, network={}, value={}, timestamp={}, error_status={:?}, network_error={}",
             log.feed_name, log.network_name, log.feed_value, log.feed_timestamp, log.error_status_code, log.network_error
         );
-        
+
         let record = sqlx::query_as::<_, FeedLog>(
             r#"
             INSERT INTO feed_log (
@@ -45,7 +45,7 @@ impl FeedLogRepository {
                 error_status_code,
                 network_error,
                 created_at
-            "#
+            "#,
         )
         .bind(&log.feed_name)
         .bind(&log.network_name)
@@ -84,7 +84,7 @@ impl FeedLogRepository {
             WHERE feed_name = $1 AND network_name = $2
             ORDER BY created_at DESC
             LIMIT 1
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -122,7 +122,7 @@ impl FeedLogRepository {
                 AND created_at >= $3 
                 AND created_at <= $4
             ORDER BY created_at DESC
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -143,7 +143,7 @@ impl FeedLogRepository {
             SELECT COUNT(*)
             FROM feed_log
             WHERE feed_name = $1 AND network_name = $2
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -156,16 +156,21 @@ impl FeedLogRepository {
 
     /// Deletes feed logs older than the specified number of days
     #[allow(dead_code)]
-    pub async fn delete_older_than(&self, feed_name: &str, network_name: &str, days: u32) -> Result<u64> {
+    pub async fn delete_older_than(
+        &self,
+        feed_name: &str,
+        network_name: &str,
+        days: u32,
+    ) -> Result<u64> {
         let cutoff_date = Utc::now() - Duration::days(days as i64);
-        
+
         let result = sqlx::query(
             r#"
             DELETE FROM feed_log
             WHERE feed_name = $1 
                 AND network_name = $2
                 AND created_at < $3
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -175,7 +180,7 @@ impl FeedLogRepository {
         .context("Failed to delete old feed logs")?;
 
         let deleted_count = result.rows_affected();
-        
+
         if deleted_count > 0 {
             info!(
                 "Deleted {} old feed logs for feed '{}' on network '{}' (older than {} days)",
@@ -193,7 +198,7 @@ impl FeedLogRepository {
             r#"
             DELETE FROM feed_log
             WHERE created_at < $1
-            "#
+            "#,
         )
         .bind(cutoff_date)
         .execute(&self.pool)
@@ -201,7 +206,7 @@ impl FeedLogRepository {
         .context("Failed to delete old feed logs")?;
 
         let deleted_count = result.rows_affected();
-        
+
         if deleted_count > 0 {
             info!(
                 "Deleted {} old feed logs across all feeds (older than {})",

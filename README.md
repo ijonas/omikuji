@@ -102,8 +102,31 @@ docker run -v $(pwd)/config.yaml:/config/config.yaml \
 ```bash
 git clone https://github.com/ijonas/omikuji.git
 cd omikuji
+
+# Setup git hooks (optional but recommended for contributors)
+./.githooks/setup.sh
+
 cargo build --release
 sudo mv target/release/omikuji /usr/local/bin/
+```
+
+### Development Setup
+
+For contributors, we use git hooks to ensure code quality:
+
+```bash
+# Enable pre-commit hooks (runs cargo fmt and clippy)
+./.githooks/setup.sh
+
+# The pre-commit hook will:
+# - Check code formatting with `cargo fmt`
+# - Run linting with `cargo clippy`
+# - Prevent commits if issues are found
+
+# To run checks manually:
+cargo fmt --check
+cargo clippy -- -D warnings
+cargo test
 ```
 
 ## 🚀 Getting Started

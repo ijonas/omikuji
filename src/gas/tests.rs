@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod gas_estimator_tests {
-    use super::super::estimator::{GasEstimator, GasEstimate};
-    use crate::config::models::{Network, GasConfig, FeeBumpingConfig};
+    use super::super::estimator::{GasEstimate, GasEstimator};
+    use crate::config::models::{FeeBumpingConfig, GasConfig, Network};
     use alloy::primitives::U256;
     use std::sync::Arc;
 
@@ -52,7 +52,10 @@ mod gas_estimator_tests {
         };
 
         assert_eq!(legacy_estimate.gas_limit, U256::from(100_000));
-        assert_eq!(legacy_estimate.gas_price, Some(U256::from(20_000_000_000u64)));
+        assert_eq!(
+            legacy_estimate.gas_price,
+            Some(U256::from(20_000_000_000u64))
+        );
         assert!(legacy_estimate.max_fee_per_gas.is_none());
         assert!(legacy_estimate.max_priority_fee_per_gas.is_none());
 
@@ -66,8 +69,14 @@ mod gas_estimator_tests {
 
         assert_eq!(eip1559_estimate.gas_limit, U256::from(100_000));
         assert!(eip1559_estimate.gas_price.is_none());
-        assert_eq!(eip1559_estimate.max_fee_per_gas, Some(U256::from(50_000_000_000u64)));
-        assert_eq!(eip1559_estimate.max_priority_fee_per_gas, Some(U256::from(2_000_000_000u64)));
+        assert_eq!(
+            eip1559_estimate.max_fee_per_gas,
+            Some(U256::from(50_000_000_000u64))
+        );
+        assert_eq!(
+            eip1559_estimate.max_priority_fee_per_gas,
+            Some(U256::from(2_000_000_000u64))
+        );
     }
 
     // TODO: Re-enable this test once we have a proper mock provider for alloy
@@ -107,7 +116,7 @@ mod gas_estimator_tests {
     //     );
     // }
 
-    // TODO: Re-enable this test once we have a proper mock provider for alloy  
+    // TODO: Re-enable this test once we have a proper mock provider for alloy
     // #[test]
     // fn test_fee_bumping_eip1559() {
     //     let network = create_test_network("eip1559");
@@ -184,14 +193,14 @@ mod gas_estimator_tests {
         // Original gas estimate: 100,000
         let original_gas = U256::from(100_000);
         let with_multiplier = original_gas.saturating_mul(U256::from(1500)) / U256::from(1000);
-        
+
         assert_eq!(with_multiplier, U256::from(150_000));
     }
 
     #[test]
     fn test_fee_bumping_config() {
         let network = create_test_network("legacy");
-        
+
         assert!(network.gas_config.fee_bumping.enabled);
         assert_eq!(network.gas_config.fee_bumping.max_retries, 3);
         assert_eq!(network.gas_config.fee_bumping.initial_wait_seconds, 30);

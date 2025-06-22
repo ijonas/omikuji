@@ -20,7 +20,7 @@ pub struct TransactionLog {
     pub gas_limit: i64,
     pub gas_used: i64,
     pub gas_price_gwei: f64,
-    pub total_cost_wei: String,  // Store as string to avoid BigDecimal issues
+    pub total_cost_wei: String, // Store as string to avoid BigDecimal issues
     pub efficiency_percent: f64,
     pub tx_type: String,
     pub status: String,
@@ -58,7 +58,7 @@ impl TransactionLogRepository {
     /// Save a transaction log entry
     pub async fn save_transaction(&self, details: TransactionDetails) -> Result<i32> {
         let total_cost_wei = details.total_cost_wei.to_string();
-        
+
         debug!(
             "Attempting to save transaction log: feed={}, network={}, tx_hash={}, gas_used={}, gas_price={:.2} gwei, status={}, efficiency={:.1}%",
             details.feed_name, details.network, details.tx_hash, details.gas_used, details.gas_price_gwei, details.status, details.efficiency_percent
@@ -80,7 +80,7 @@ impl TransactionLogRepository {
                 block_number = EXCLUDED.block_number,
                 error_message = EXCLUDED.error_message
             RETURNING id
-            "#
+            "#,
         )
         .bind(&details.tx_hash)
         .bind(&details.feed_name)
@@ -120,7 +120,7 @@ impl TransactionLogRepository {
             WHERE feed_name = $1 AND network_name = $2
             ORDER BY created_at DESC
             LIMIT $3
-            "#
+            "#,
         )
         .bind(feed_name)
         .bind(network_name)
@@ -139,7 +139,7 @@ impl TransactionLogRepository {
             r#"
             SELECT * FROM transaction_stats
             ORDER BY network_name, feed_name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await
@@ -170,7 +170,7 @@ impl TransactionLogRepository {
             WHERE network_name = $1 
                 AND date >= CURRENT_DATE - INTERVAL '$2 days'
             ORDER BY date DESC, feed_name
-            "#
+            "#,
         )
         .bind(network_name)
         .bind(days)
@@ -194,7 +194,7 @@ impl TransactionLogRepository {
             WHERE gas_price_gwei > $1
             ORDER BY gas_price_gwei DESC, created_at DESC
             LIMIT $2
-            "#
+            "#,
         )
         .bind(threshold_gwei)
         .bind(limit)
@@ -218,7 +218,7 @@ impl TransactionLogRepository {
             WHERE efficiency_percent < $1 AND status = 'success'
             ORDER BY efficiency_percent ASC, created_at DESC
             LIMIT $2
-            "#
+            "#,
         )
         .bind(efficiency_threshold)
         .bind(limit)
@@ -236,7 +236,7 @@ impl TransactionLogRepository {
             r#"
             DELETE FROM transaction_log
             WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '$1 days'
-            "#
+            "#,
         )
         .bind(days_to_keep)
         .execute(&self.pool)
@@ -262,6 +262,6 @@ pub struct DailyGasCost {
     pub transaction_count: i64,
     pub total_gas_used: i64,
     pub avg_gas_price_gwei: f64,
-    pub total_cost_wei: String,  // Store as string to avoid BigDecimal issues
+    pub total_cost_wei: String, // Store as string to avoid BigDecimal issues
     pub avg_efficiency_percent: f64,
 }
