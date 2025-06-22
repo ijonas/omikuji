@@ -1,46 +1,138 @@
 # Omikuji Documentation
 
-Welcome to the Omikuji documentation. This directory contains detailed guides and references for configuring and operating Omikuji.
+Welcome to the comprehensive documentation for Omikuji, a lightweight EVM blockchain datafeed provider.
 
-## Available Documentation
+## 📚 Documentation Structure
 
-### Configuration Guides
+### 🚀 Getting Started
+Start here if you're new to Omikuji.
 
-- **[Gas Configuration Guide](gas-configuration.md)** - Comprehensive guide for configuring gas settings
-  - Transaction types (Legacy vs EIP-1559)
-  - Gas estimation and manual overrides
-  - Fee bumping strategies for stuck transactions
-  - Network-specific examples and scenarios
-  - Troubleshooting gas-related issues
+- **[Installation Guide](getting-started/installation.md)** - Install Omikuji via binary, Docker, or source
+- **[Configuration Guide](getting-started/configuration.md)** - Learn how to configure networks and datafeeds  
+- **[Quick Start Tutorial](getting-started/quickstart.md)** - Get running with a live feed in 5 minutes
 
-- **[Database Setup Guide](database-setup.md)** - PostgreSQL setup and configuration
-  - Installation instructions
-  - Database configuration
-  - Data retention settings
-  - Cleanup scheduling
-  - Monitoring and troubleshooting
+### 📖 Guides
+Detailed guides for specific features and use cases.
 
-### Technical Specifications
+- **[Gas Configuration](guides/gas-configuration.md)** - Configure gas settings, EIP-1559, fee bumping
+- **[Database Setup](guides/database-setup.md)** - PostgreSQL setup for historical data storage
+- **[Docker Setup](guides/docker-setup.md)** - Docker and Docker Compose deployment
+- **[Prometheus Metrics](guides/prometheus-metrics.md)** - Monitor feeds, gas usage, and system health
+- **[Gas Monitoring](guides/gas-monitoring.md)** - Track and analyze gas consumption
+- **[Debug Logging](guides/debug-logging.md)** - Troubleshooting with detailed logs
 
-- **[Configuration Reference](../specs/configuration.md)** - Complete YAML configuration file specification
-- **[Chainlink Contract Support](../specs/chainlink-contract-support.md)** - FluxAggregator integration details
-- **[Feed Value Retrieval](../specs/retrieve-feed-value.md)** - How Omikuji fetches external data
+### 📋 Reference
+Complete technical reference documentation.
 
-### Additional Resources
+- **[Configuration Reference](reference/configuration.md)** - All configuration options explained
+- **[Smart Contracts](reference/contracts.md)** - Supported contracts and integration details
+- **[Architecture](reference/architecture.md)** - System design and component overview
+- **[Library References](reference/libraries/)** - Documentation for key dependencies (alloy-rs, tokio, etc.)
 
-- **[README](../README.md)** - Project overview and quick start guide
-- **[AI Documentation](../ai_docs/)** - Technical implementation details
+### 🔧 Development
+For contributors and developers.
 
-## Quick Links
+- **[Contributing Guide](development/contributing.md)** - How to contribute to Omikuji
+- **[Testing Guide](development/testing.md)** - Testing strategies and best practices
+- **[Git Hooks](development/git-hooks.md)** - Automated code quality checks
 
-- [Getting Started](../README.md#-getting-started)
-- [Example Configuration](../example_config.yaml)
-- [GitHub Repository](https://github.com/ijonas/omikuji)
+## 🎯 Quick Links
 
-## Need Help?
+### By Use Case
 
-If you can't find what you're looking for in the documentation:
+**"I want to..."**
 
-1. Check the [example configuration file](../example_config.yaml) for practical examples
-2. Review the [specs directory](../specs/) for technical details
-3. Open an issue on [GitHub](https://github.com/ijonas/omikuji/issues)
+- **Run my first datafeed** → [Quick Start Tutorial](getting-started/quickstart.md)
+- **Deploy with Docker** → [Docker Setup](guides/docker-setup.md)
+- **Monitor my feeds** → [Prometheus Metrics](guides/prometheus-metrics.md)
+- **Store historical data** → [Database Setup](guides/database-setup.md)
+- **Optimize gas costs** → [Gas Configuration](guides/gas-configuration.md)
+- **Contribute code** → [Contributing Guide](development/contributing.md)
+
+### By Topic
+
+**Configuration**
+- [Basic Configuration](getting-started/configuration.md)
+- [Complete Reference](reference/configuration.md)
+- [Gas Settings](guides/gas-configuration.md)
+
+**Deployment**
+- [Binary Installation](getting-started/installation.md#binary-installation)
+- [Docker Deployment](guides/docker-setup.md)
+- [Building from Source](getting-started/installation.md#building-from-source)
+
+**Monitoring**
+- [Metrics Export](guides/prometheus-metrics.md)
+- [Gas Tracking](guides/gas-monitoring.md)
+- [Debug Logging](guides/debug-logging.md)
+
+**Smart Contracts**
+- [Contract Types](reference/contracts.md#supported-contract-types)
+- [FluxAggregator](reference/contracts.md#fluxaggregator-interface)
+- [Integration Examples](reference/contracts.md#integration-examples)
+
+## 📊 Architecture Overview
+
+```
+External APIs → Omikuji → Smart Contracts
+                  ↓
+              PostgreSQL
+                  ↓
+              Prometheus
+```
+
+Key components:
+- **Datafeed Manager** - Orchestrates all feeds
+- **Network Manager** - Handles blockchain connections
+- **Contract Updater** - Submits transactions
+- **Metrics Server** - Exposes Prometheus metrics
+
+See [Architecture Reference](reference/architecture.md) for details.
+
+## 🔍 Finding Information
+
+### Search Tips
+
+1. **Use your browser's search** (Ctrl/Cmd + F) within documents
+2. **Check the table of contents** at the top of longer documents
+3. **Follow cross-references** between related topics
+
+### Document Conventions
+
+- 📝 **Notes** - Important information
+- ⚠️ **Warnings** - Critical warnings
+- 💡 **Tips** - Helpful suggestions
+- 🔧 **Examples** - Practical code examples
+
+## 🤝 Getting Help
+
+If you can't find what you need:
+
+1. **Search [GitHub Issues](https://github.com/ijonas/omikuji/issues)**
+2. **Check [example configurations](https://github.com/ijonas/omikuji/blob/main/example_config.yaml)**
+3. **Ask in [Discussions](https://github.com/ijonas/omikuji/discussions)**
+4. **Open a [new issue](https://github.com/ijonas/omikuji/issues/new)**
+
+## 📈 Keeping Documentation Updated
+
+This documentation is maintained alongside the code. When contributing:
+
+- Update relevant docs with code changes
+- Add examples for new features
+- Fix any outdated information you find
+- Follow the [Contributing Guide](development/contributing.md)
+
+## 🏗️ Documentation Roadmap
+
+Planned additions:
+- Production deployment guide
+- Multi-oracle coordination
+- Performance tuning guide
+- Security best practices
+- Video tutorials
+
+---
+
+**Latest Update**: January 2025 | **Omikuji Version**: 0.2.15
+
+For the most up-to-date information, see the [GitHub repository](https://github.com/ijonas/omikuji).
