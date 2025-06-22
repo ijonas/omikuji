@@ -17,6 +17,11 @@ pub struct OmikujiConfig {
     #[serde(default)]
     #[validate]
     pub database_cleanup: DatabaseCleanupConfig,
+
+    /// Key storage configuration
+    #[serde(default)]
+    #[validate]
+    pub key_storage: KeyStorageConfig,
 }
 
 /// Configuration for database cleanup task
@@ -42,6 +47,61 @@ impl Default for DatabaseCleanupConfig {
 
 fn default_cleanup_schedule() -> String {
     "0 0 * * * *".to_string() // Every hour at minute 0
+}
+
+/// Configuration for key storage
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct KeyStorageConfig {
+    /// Storage type: "keyring" or "env" (default: "env" for backward compatibility)
+    #[serde(default = "default_key_storage_type")]
+    #[validate(custom = "validate_key_storage_type")]
+    pub storage_type: String,
+
+    /// Keyring configuration (only used when storage_type is "keyring")
+    #[serde(default)]
+    pub keyring: KeyringConfig,
+}
+
+impl Default for KeyStorageConfig {
+    fn default() -> Self {
+        Self {
+            storage_type: default_key_storage_type(),
+            keyring: KeyringConfig::default(),
+        }
+    }
+}
+
+/// Keyring-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyringConfig {
+    /// Service name for keyring (default: "omikuji")
+    #[serde(default = "default_keyring_service")]
+    pub service: String,
+}
+
+impl Default for KeyringConfig {
+    fn default() -> Self {
+        Self {
+            service: default_keyring_service(),
+        }
+    }
+}
+
+fn default_key_storage_type() -> String {
+    "env".to_string()
+}
+
+fn default_keyring_service() -> String {
+    "omikuji".to_string()
+}
+
+fn validate_key_storage_type(storage_type: &str) -> Result<(), ValidationError> {
+    match storage_type {
+        "keyring" | "env" => Ok(()),
+        _ => Err(ValidationError::new(
+            "storage_type must be either 'keyring' or 'env'",
+        )),
+    }
 }
 
 /// Configuration for a blockchain network

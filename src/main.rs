@@ -1,10 +1,10 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
 use tracing::{debug, error, info};
 
+mod cli;
 mod config;
 mod contracts;
 mod database;
@@ -15,28 +15,27 @@ mod network;
 mod ui;
 mod wallet;
 
-/// Command line arguments
-#[derive(Parser, Debug)]
-#[command(
-    author,
-    version,
-    about = "Omikuji - A lightweight EVM blockchain datafeed provider",
-    long_about = "Omikuji is a daemon that provides external off-chain data to EVM blockchains \
-                  such as Ethereum and BASE. It manages datafeeds defined in YAML configuration \
-                  files and updates smart contracts based on time and deviation thresholds."
-)]
-struct Args {
-    /// Path to configuration file
-    #[arg(short, long, value_name = "FILE")]
-    config: Option<PathBuf>,
-
-    /// Private key environment variable for signing transactions
-    #[arg(short, long, default_value = "OMIKUJI_PRIVATE_KEY")]
-    private_key_env: String,
-}
+use cli::{Cli, Commands};
+use wallet::KeyStorage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse command line arguments first
+    // This allows --version and --help to work without any side effects
+    let cli = Cli::parse();
+
+    // Handle key management commands before showing welcome screen
+    match &cli.command {
+        Some(Commands::Key { command }) => {
+            // Initialize minimal logging for key commands
+            tracing_subscriber::fmt::init();
+            return cli::handle_key_command(command.clone()).await;
+        }
+        Some(Commands::Run) | None => {
+            // Continue with normal daemon operation
+        }
+    }
+
     // Prepare version string for ASCII art
     let version = format!("Omikuji v{}", env!("CARGO_PKG_VERSION"));
     // The ASCII art is 100 chars wide, so center the version string
@@ -44,10 +43,6 @@ async fn main() -> Result<()> {
     let version_line = format!("{:^width$}", version, width = width);
     let welcome = ui::welcome_screen::WELCOME_SCREEN.replace("{version_line}", &version_line);
     println!("{}", welcome);
-
-    // Parse command line arguments first
-    // This allows --version and --help to work without any side effects
-    let args = Args::parse();
 
     // Initialize logging after argument parsing
     tracing_subscriber::fmt::init();
@@ -59,7 +54,7 @@ async fn main() -> Result<()> {
     }
 
     // Determine configuration path
-    let config_path = args.config.unwrap_or_else(config::default_config_path);
+    let config_path = cli.config.unwrap_or_else(config::default_config_path);
     info!("Using configuration file: {:?}", config_path);
 
     // Load and validate configuration
@@ -104,28 +99,57 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Try to load wallets for all networks from environment variable
-    info!(
-        "Attempting to load wallet from environment variable: {}",
-        args.private_key_env
-    );
+    // Load wallets based on key storage configuration
+    use crate::wallet::key_storage::{EnvVarStorage, KeyringStorage};
 
-    // Check if the environment variable exists
-    if std::env::var(&args.private_key_env).is_ok() {
-        info!("Environment variable {} found", args.private_key_env);
-    } else {
-        error!("Environment variable {} not found", args.private_key_env);
-    }
+    let key_storage: Box<dyn KeyStorage> = match config.key_storage.storage_type.as_str() {
+        "keyring" => {
+            info!("Using OS keyring for key storage");
+            Box::new(KeyringStorage::new(Some(
+                config.key_storage.keyring.service.clone(),
+            )))
+        }
+        "env" => {
+            info!("Using environment variables for key storage (consider migrating to keyring)");
+            Box::new(EnvVarStorage::new())
+        }
+        _ => {
+            error!(
+                "Unknown key storage type: {}",
+                config.key_storage.storage_type
+            );
+            return Err(anyhow::anyhow!("Invalid key storage configuration"));
+        }
+    };
 
     for network in &config.networks {
         match network_manager
-            .load_wallet_from_env(&network.name, &args.private_key_env)
+            .load_wallet_from_key_storage(&network.name, key_storage.as_ref())
             .await
         {
             Ok(_) => {
                 info!("Loaded wallet for network {}", network.name);
             }
             Err(e) => {
+                // For backward compatibility, try environment variable if keyring fails
+                if config.key_storage.storage_type == "keyring" {
+                    info!(
+                        "Keyring lookup failed for network {}, trying environment variable",
+                        network.name
+                    );
+                    if network_manager
+                        .load_wallet_from_env(&network.name, &cli.private_key_env)
+                        .await
+                        .is_ok()
+                    {
+                        info!(
+                            "Loaded wallet for network {} from environment variable",
+                            network.name
+                        );
+                        continue;
+                    }
+                }
+
                 error!("Failed to load wallet for network {}: {}", network.name, e);
                 error!(
                     "Transactions on {} network will not be possible",

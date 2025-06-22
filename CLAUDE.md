@@ -50,6 +50,25 @@ cargo build --release
 cargo run --release
 ```
 
+### Key Management
+
+```bash
+# Import a private key for a network
+cargo run -- key import --network ethereum-mainnet
+
+# Export a key (with confirmation)
+cargo run -- key export --network ethereum-mainnet
+
+# Remove a key
+cargo run -- key remove --network ethereum-mainnet
+
+# List stored keys
+cargo run -- key list
+
+# Migrate keys from environment variables to keyring
+cargo run -- key migrate
+```
+
 ### Testing
 
 ```bash

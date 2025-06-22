@@ -21,6 +21,7 @@ dotenv = "0.15"
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
 
 # Logging
 tracing = "0.1"
@@ -53,6 +54,11 @@ tokio-cron-scheduler = "0.9"
 
 # Utilities
 lazy_static = "1.4"
+
+# Key storage
+keyring = "3.0"
+secrecy = "0.10"
+rpassword = "7.3"
 
 [dev-dependencies]
 tempfile = "3.9"
