@@ -115,9 +115,9 @@ jobs:
             $PRERELEASE
           
           # Get release info for outputs
-          RELEASE_DATA=$(gh release view "$TAG" --json uploadUrl,id)
+          RELEASE_DATA=$(gh release view "$TAG" --json uploadUrl,databaseId)
           UPLOAD_URL=$(echo "$RELEASE_DATA" | jq -r '.uploadUrl' | sed 's/{?name,label}//')
-          RELEASE_ID=$(echo "$RELEASE_DATA" | jq -r '.id')
+          RELEASE_ID=$(echo "$RELEASE_DATA" | jq -r '.databaseId')
           
           echo "upload_url=$UPLOAD_URL" >> $GITHUB_OUTPUT
           echo "id=$RELEASE_ID" >> $GITHUB_OUTPUT
@@ -218,7 +218,7 @@ jobs:
             const assets = await github.rest.repos.listReleaseAssets({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: '${{ needs.create-release.outputs.release_id }}'
+              release_id: ${{ needs.create-release.outputs.release_id }}
             });
             
             let checksums = '';
