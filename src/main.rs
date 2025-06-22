@@ -16,6 +16,8 @@ mod metrics;
 mod wallet;
 mod tui; // Add this to import the TUI dashboard module
 
+use crate::tui::update;
+
 /// Command line arguments
 #[derive(Parser, Debug)]
 #[command(
@@ -46,12 +48,12 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     if args.tui {
+        let dashboard = Arc::new(tokio::sync::RwLock::new(crate::tui::DashboardState::default()));
         // --- TUI Dashboard Log Channel Setup ---
-        use crate::tui::{DashboardState, FeedStatus, NetworkStatus, start_tui_dashboard_with_state};
-        use tokio::sync::{mpsc, RwLock};
+        use crate::tui::{FeedStatus, NetworkStatus, start_tui_dashboard_with_state};
+        use tokio::sync::mpsc;
         use tracing_subscriber::fmt::writer::BoxMakeWriter;
         let (log_tx, log_rx) = mpsc::channel(1000);
-        let dashboard = Arc::new(RwLock::new(DashboardState::default()));
         tracing_subscriber::fmt()
             .with_ansi(false)
             .with_writer(BoxMakeWriter::new(move || crate::tui::ChannelWriter(log_tx.clone())))
@@ -147,6 +149,9 @@ async fn main() -> Result<()> {
         // Now wrap in Arc for sharing across threads
         let network_manager = Arc::new(network_manager);
 
+        // Initialize dashboard for TUI
+        let dashboard = Arc::new(tokio::sync::RwLock::new(crate::tui::DashboardState::default()));
+
         // Initialize database connection (optional - continues if not available)
         info!("Checking for database configuration...");
         let database_pool = match std::env::var("DATABASE_URL") {
@@ -199,14 +204,56 @@ async fn main() -> Result<()> {
         };
 
         // Initialize and start datafeed monitoring
-        let mut feed_manager = if let Some(pool) = database_pool {
+        let mut feed_manager = if let Some(ref pool) = database_pool {
             datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
-                .with_repository(pool)
+                .with_repository(pool.clone())
         } else {
             datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
         };
-        
-        feed_manager.start().await;
+        // --- TUI: Spawn dashboard update task for live metrics ---
+        let dash_for_metrics = dashboard.clone();
+        let network_manager_for_metrics = network_manager.clone();
+        let config_for_metrics = config.clone();
+        tokio::spawn(async move {
+            loop {
+                // Update network status
+                let mut networks = Vec::new();
+                for net in &config_for_metrics.networks {
+                    let chain_id = network_manager_for_metrics.get_chain_id(&net.name).await.ok();
+                    let block_number = network_manager_for_metrics.get_block_number(&net.name).await.ok();
+                    let rpc_ok = chain_id.is_some() && block_number.is_some();
+                    networks.push(crate::tui::NetworkStatus {
+                        name: net.name.clone(),
+                        rpc_ok,
+                        chain_id,
+                        block_number,
+                        wallet_status: "OK".to_string(),
+                    });
+                }
+                {
+                    let mut dash = dash_for_metrics.write().await;
+                    dash.networks = networks;
+                }
+                // Update staleness and error counts
+                update::update_avg_staleness(&dash_for_metrics).await;
+                update::update_counts(&dash_for_metrics).await;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        });
+        // --- END TUI metrics task ---
+
+        // --- TUI: Spawn DB metrics updater if DB is available ---
+        if let Some(ref pool) = database_pool {
+            use crate::database::TransactionLogRepository;
+            use std::sync::Arc;
+            use crate::tui::db_metrics::spawn_db_metrics_updater;
+            let tx_log_repo = Arc::new(TransactionLogRepository::new(pool.clone()));
+            spawn_db_metrics_updater(dashboard.clone(), tx_log_repo, 10);
+        }
+        // --- END DB metrics updater ---
+
+        // Start all feed monitors with dashboard handle
+        feed_manager.start(Some(dashboard.clone())).await;
 
         // Start Prometheus metrics server
         if let Err(e) = metrics::start_metrics_server(9090).await {
@@ -237,35 +284,6 @@ async fn main() -> Result<()> {
             }
         }
 
-        // Dummy dashboard update task (for demo, replace with real updates)
-        let dash = dashboard.clone();
-        tokio::spawn(async move {
-            loop {
-                {
-                    let mut d = dash.write().await;
-                    d.metrics.feed_count = 2;
-                    d.metrics.error_count = 0;
-                    d.metrics.tx_count += 1;
-                    d.metrics.last_tx_cost = Some(0.0012);
-                    d.feeds = vec![FeedStatus {
-                        name: "eth_usd".to_string(),
-                        last_value: "3450.12".to_string(),
-                        last_update: std::time::Instant::now(),
-                        next_update: std::time::Instant::now() + std::time::Duration::from_secs(60),
-                        error: None,
-                    }];
-                    d.networks = vec![NetworkStatus {
-                        name: "arbsepolia".to_string(),
-                        rpc_ok: true,
-                        chain_id: Some(421614),
-                        block_number: Some(12345678),
-                        wallet_status: "OK".to_string(),
-                    }];
-                    d.alerts = vec!["No errors".to_string()];
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-        });
         return start_tui_dashboard_with_state(dashboard, log_rx).await.map_err(|e| anyhow::anyhow!(e));
     } else {
         // --- Standard mode: use default tracing subscriber ---
@@ -363,6 +381,9 @@ async fn main() -> Result<()> {
         // Now wrap in Arc for sharing across threads
         let network_manager = Arc::new(network_manager);
 
+        // Initialize dashboard for TUI
+        let dashboard = Arc::new(tokio::sync::RwLock::new(crate::tui::DashboardState::default()));
+
         // Initialize database connection (optional - continues if not available)
         info!("Checking for database configuration...");
         let database_pool = match std::env::var("DATABASE_URL") {
@@ -415,14 +436,56 @@ async fn main() -> Result<()> {
         };
 
         // Initialize and start datafeed monitoring
-        let mut feed_manager = if let Some(pool) = database_pool {
+        let mut feed_manager = if let Some(ref pool) = database_pool {
             datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
-                .with_repository(pool)
+                .with_repository(pool.clone())
         } else {
             datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
         };
-        
-        feed_manager.start().await;
+        // --- TUI: Spawn dashboard update task for live metrics ---
+        let dash_for_metrics = dashboard.clone();
+        let network_manager_for_metrics = network_manager.clone();
+        let config_for_metrics = config.clone();
+        tokio::spawn(async move {
+            loop {
+                // Update network status
+                let mut networks = Vec::new();
+                for net in &config_for_metrics.networks {
+                    let chain_id = network_manager_for_metrics.get_chain_id(&net.name).await.ok();
+                    let block_number = network_manager_for_metrics.get_block_number(&net.name).await.ok();
+                    let rpc_ok = chain_id.is_some() && block_number.is_some();
+                    networks.push(crate::tui::NetworkStatus {
+                        name: net.name.clone(),
+                        rpc_ok,
+                        chain_id,
+                        block_number,
+                        wallet_status: "OK".to_string(),
+                    });
+                }
+                {
+                    let mut dash = dash_for_metrics.write().await;
+                    dash.networks = networks;
+                }
+                // Update staleness and error counts
+                update::update_avg_staleness(&dash_for_metrics).await;
+                update::update_counts(&dash_for_metrics).await;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        });
+        // --- END TUI metrics task ---
+
+        // --- TUI: Spawn DB metrics updater if DB is available ---
+        if let Some(ref pool) = database_pool {
+            use crate::database::TransactionLogRepository;
+            use std::sync::Arc;
+            use crate::tui::db_metrics::spawn_db_metrics_updater;
+            let tx_log_repo = Arc::new(TransactionLogRepository::new(pool.clone()));
+            spawn_db_metrics_updater(dashboard.clone(), tx_log_repo, 10);
+        }
+        // --- END DB metrics updater ---
+
+        // Start all feed monitors with dashboard handle
+        feed_manager.start(Some(dashboard.clone())).await;
 
         // Start Prometheus metrics server
         if let Err(e) = metrics::start_metrics_server(9090).await {

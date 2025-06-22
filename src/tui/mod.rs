@@ -18,6 +18,10 @@ use tokio::sync::{mpsc, RwLock};
 use ratatui::Frame;
 use regex::Regex;
 use chrono::{DateTime, Local};
+pub mod update;
+pub mod metrics;
+pub mod db_metrics;
+use ratatui::symbols::bar;
 
 // --- Shared State Structures ---
 #[derive(Clone, Debug)]
@@ -56,6 +60,10 @@ pub struct MetricsState {
     pub error_count: usize,
     pub tx_count: usize,
     pub last_tx_cost: Option<f64>,
+    // --- Added for live metrics ---
+    pub update_success_count: usize, // total successful updates
+    pub update_total_count: usize,   // total attempted updates
+    pub avg_staleness_secs: f64,     // average staleness in seconds
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +86,14 @@ pub struct DashboardState {
     pub filter: Option<String>,
     pub compact_logs: bool,
     pub group_state: LogGroupState,
+    // --- New fields for redesign ---
+    pub autoscroll: bool,
+    pub input_mode: bool,
+    pub input_buffer: String,
+    pub show_help: bool,
+    pub gas_price_gwei_hist: Ring<120, f64>,
+    pub response_time_ms_hist: Ring<120, u64>,
+    // pub theme: Theme, // Uncomment if theming is implemented
 }
 
 #[derive(Clone, Debug, Default)]
@@ -118,6 +134,31 @@ impl LogLevel {
             LogLevel::Debug => "🐛",
             LogLevel::Trace => "🔍",
         }
+    }
+}
+
+// --- Ring Buffer for History ---
+#[derive(Clone, Debug)]
+pub struct Ring<const N: usize, T: Copy + Default>(pub [T; N], pub usize);
+
+impl<const N: usize, T: Copy + Default> Default for Ring<N, T> {
+    fn default() -> Self {
+        Self([T::default(); N], 0)
+    }
+}
+
+impl<const N: usize, T: Copy + Default> Ring<N, T> {
+    pub fn push(&mut self, v: T) {
+        self.0[self.1 % N] = v;
+        self.1 += 1;
+    }
+    pub fn as_vec(&self) -> Vec<T> {
+        let filled = self.1.min(N);
+        let mut out = Vec::with_capacity(filled);
+        for i in 0..filled {
+            out.push(self.0[(self.1 - filled + i) % N]);
+        }
+        out
     }
 }
 
@@ -222,18 +263,15 @@ async fn run_app<B: ratatui::backend::Backend>(
     use ratatui::style::Style;
     use std::collections::HashMap;
     let panel_titles = [
-        Line::from("Metrics"),
+        Line::from("Live"),
         Line::from("Feeds"),
-        Line::from("Network"),
-        Line::from("Alerts"),
     ];
     let mut last_tick = Instant::now();
     let tick_rate = Duration::from_millis(200);
     loop {
         let mut dash = dashboard.write().await;
-        // Animate alerts
         dash.group_state.animate_tick = dash.group_state.animate_tick.wrapping_add(1);
-        // --- FIX: Clamp log_scroll to available lines after new logs arrive ---
+        // Clamp log_scroll to available lines after new logs arrive
         // Build flat_lines for clamping
         let mut group_map: HashMap<String, Vec<&LogEntry>> = HashMap::new();
         for entry in dash.logs.iter() {
@@ -262,92 +300,126 @@ async fn run_app<B: ratatui::backend::Backend>(
         let dash = dashboard.read().await.clone();
         terminal.draw(|f| {
             let size = f.size();
+            // Layout: Overview (top), Main panel (tabs), Network bar, Command input, Logs
             let layout = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(1)
                 .constraints([
-                    Constraint::Length(2), // Tab bar
-                    Constraint::Min(8),   // Tab content
-                    Constraint::Length((size.height / 3).max(5)), // Logs bottom third
+                    Constraint::Length(9), // Overview panel (fixed height)
+                    Constraint::Min(8),    // Main panel (tabs)
+                    Constraint::Length(1), // Network bar
+                    Constraint::Length(if dash.input_mode { 3 } else { 0 }), // Command input
+                    Constraint::Length((size.height / 3).max(5)), // Logs
                 ])
                 .split(size);
-            // Tab bar
+            // Overview panel
+            render_overview(f, layout[0], &dash);
+            // Main panel (tabs)
             let tabs = Tabs::new(panel_titles.to_vec())
                 .select(dash.selected_panel)
                 .block(Block::default().borders(Borders::ALL).title("Omikuji Dashboard"))
                 .highlight_style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
-            f.render_widget(tabs, layout[0]);
-            // Tab content
+            f.render_widget(tabs, layout[1]);
             match dash.selected_panel {
-                0 => render_metrics(f, layout[1], &dash),
-                1 => render_feeds(f, layout[1], &dash),
-                2 => render_network(f, layout[1], &dash),
-                3 => render_alerts(f, layout[1], &dash),
+                0 => render_panel_live(f, layout[1], &dash),
+                1 => render_panel_feeds(f, layout[1], &dash),
                 _ => {},
             }
-            // Logs always at bottom
-            render_logs(f, layout[2], &dash);
+            // Network bar
+            render_network_bar(f, layout[2], &dash);
+            // Command input (if active)
+            if dash.input_mode {
+                render_command_input(f, layout[3], &dash);
+            }
+            // Logs
+            render_logs(f, layout[4], &dash);
+            // Help overlay (if active)
+            if dash.show_help {
+                render_help_overlay(f, layout[5], &dash);
+            }
         })?;
         // Handle input
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        // --- Updated Key Handling and Command Parsing ---
+        // In run_app event loop, after event::poll:
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 let mut dash = dashboard.write().await;
-                // --- FIX: Use total lines for scroll clamping ---
-                // Build flat_lines for clamping
-                let mut group_map: HashMap<String, Vec<&LogEntry>> = HashMap::new();
-                for entry in dash.logs.iter() {
-                    group_map.entry(entry.target.clone()).or_default().push(entry);
-                }
-                let mut flat_lines = Vec::new();
-                let mut groups: Vec<_> = group_map.into_iter().collect();
-                groups.sort_by(|a, b| b.1.last().unwrap().timestamp.cmp(&a.1.last().unwrap().timestamp));
-                for (target, entries) in &groups {
-                    flat_lines.push(());
-                    if !dash.group_state.collapsed.contains(target) {
-                        for _ in entries.iter().rev() {
-                            flat_lines.push(());
-                        }
-                    }
-                }
-                let total = flat_lines.len();
-                let max_visible = 30;
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Tab => { dash.selected_panel = (dash.selected_panel + 1) % panel_titles.len(); },
-                    KeyCode::Up => {
-                        if dash.log_scroll < total.saturating_sub(1) {
-                            dash.log_scroll += 1;
-                        }
-                        dash.log_scroll = dash.log_scroll.min(total.saturating_sub(max_visible));
-                    },
-                    KeyCode::Down => {
-                        if dash.log_scroll > 0 {
-                            dash.log_scroll -= 1;
-                        }
-                        // Clamp to zero
-                        if dash.log_scroll > total.saturating_sub(max_visible) {
-                            dash.log_scroll = 0;
-                        }
-                    },
-                    KeyCode::Char('f') => { dash.filter = Some(String::new()); },
-                    KeyCode::Char('c') => { dash.compact_logs = !dash.compact_logs; },
-                    KeyCode::Char('/') => { dash.group_state.search_active = true; dash.group_state.search = Some(String::new()); },
-                    KeyCode::Char('e') => { dash.group_state.collapsed.clear(); }, // Expand all
-                    KeyCode::Char('x') => { // Collapse all
-                        dash.group_state.collapsed = dash.logs.iter().map(|l| l.target.clone()).collect();
-                    },
-                    KeyCode::Enter => { // Toggle collapse for group under cursor
-                        let group_target = dash.logs.iter().rev().skip(dash.log_scroll).next().map(|g| g.target.clone());
-                        if let Some(target) = group_target {
-                            if dash.group_state.collapsed.contains(&target) {
-                                dash.group_state.collapsed.remove(&target);
-                            } else {
-                                dash.group_state.collapsed.insert(target);
+                if dash.input_mode {
+                    match key.code {
+                        KeyCode::Esc => { dash.input_mode = false; dash.input_buffer.clear(); },
+                        KeyCode::Enter => {
+                            let cmd = dash.input_buffer.trim().to_string();
+                            dash.input_mode = false;
+                            dash.input_buffer.clear();
+                            // Handle commands
+                            match cmd.split_whitespace().next() {
+                                Some("ping") => {
+                                    let net = cmd.split_whitespace().nth(1).unwrap_or("");
+                                    dash.logs.push_back(LogEntry {
+                                        timestamp: Local::now(),
+                                        level: LogLevel::Info,
+                                        target: "cmd".to_string(),
+                                        message: format!("Pinging network: {net}"),
+                                });
+                                },
+                                Some("txcost") => {
+                                    let feed = cmd.split_whitespace().nth(1).unwrap_or("");
+                                    dash.logs.push_back(LogEntry {
+                                        timestamp: Local::now(),
+                                        level: LogLevel::Info,
+                                        target: "cmd".to_string(),
+                                        message: format!("Tx cost for feed: {feed}"),
+                                    });
+                                },
+                                Some("clear") => {
+                                    dash.logs.clear();
+                                },
+                                Some("help") => {
+                                    dash.logs.push_back(LogEntry {
+                                        timestamp: Local::now(),
+                                        level: LogLevel::Info,
+                                        target: "cmd".to_string(),
+                                        message: "Available: ping <network>, txcost <feed>, clear, help".to_string(),
+                                    });
+                                },
+                                _ => {
+                                    dash.logs.push_back(LogEntry {
+                                        timestamp: Local::now(),
+                                        level: LogLevel::Warn,
+                                        target: "cmd".to_string(),
+                                        message: format!("Unknown command: {cmd}"),
+                                    });
+                                }
                             }
-                        }
-                    },
-                    _ => {}
+                        },
+                        KeyCode::Char(c) => { dash.input_buffer.push(c); },
+                        KeyCode::Backspace => { dash.input_buffer.pop(); },
+                        _ => {}
+                    }
+                } else if dash.show_help {
+                    if let KeyCode::Char('?') | KeyCode::Esc = key.code {
+                        dash.show_help = false;
+                    }
+                } else {
+                    match key.code {
+                        KeyCode::Char('q') => break,
+                        KeyCode::Tab => { dash.selected_panel = (dash.selected_panel + 1) % 2; },
+                        KeyCode::Char(':') => { dash.input_mode = true; dash.input_buffer.clear(); },
+                        KeyCode::Char('?') => { dash.show_help = !dash.show_help; },
+                        KeyCode::Up => {
+                            dash.autoscroll = false;
+                            dash.log_scroll = dash.log_scroll.saturating_add(1);
+                        },
+                        KeyCode::Down => {
+                            dash.log_scroll = dash.log_scroll.saturating_sub(1);
+                            if dash.log_scroll == 0 { dash.autoscroll = true; }
+                        },
+                        KeyCode::Char('b') => { dash.log_scroll = 0; dash.autoscroll = true; },
+                        KeyCode::Char('t') => { dash.log_scroll = 9999; dash.autoscroll = false; },
+                        KeyCode::Esc => { dash.input_mode = false; dash.input_buffer.clear(); },
+                        _ => {}
+                    }
                 }
             }
         }
@@ -409,18 +481,15 @@ fn render_logs(f: &mut Frame, area: Rect, dash: &DashboardState) {
     let mut group_map: HashMap<String, Vec<&LogEntry>> = HashMap::new();
     let mut error_count = 0;
     let mut warn_count = 0;
-    // Group logs by target/module
     for entry in dash.logs.iter() {
         if entry.level == LogLevel::Error { error_count += 1; }
         if entry.level == LogLevel::Warn { warn_count += 1; }
         group_map.entry(entry.target.clone()).or_default().push(entry);
     }
-    // Build a flat list of all visible log lines (group headers + entries)
     let mut flat_lines = Vec::new();
     let mut groups: Vec<_> = group_map.into_iter().collect();
     groups.sort_by(|a, b| b.1.last().unwrap().timestamp.cmp(&a.1.last().unwrap().timestamp));
     for (target, entries) in &groups {
-        // Group header
         let collapsed = dash.group_state.collapsed.contains(target);
         let group_label = format!("{} [{}]", target, entries.len());
         let group_color = if entries.iter().any(|e| e.level == LogLevel::Error) {
@@ -435,7 +504,6 @@ fn render_logs(f: &mut Frame, area: Rect, dash: &DashboardState) {
             group_title.push(Span::raw(" [collapsed]"));
         }
         flat_lines.push(ListItem::new(Line::from(group_title)));
-        // Entries
         if !collapsed {
             for entry in entries.iter().rev() {
                 if let Some(ref filter) = filter {
@@ -445,7 +513,6 @@ fn render_logs(f: &mut Frame, area: Rect, dash: &DashboardState) {
                 }
                 let mut spans = vec![
                     Span::styled(
-                        // Improved timestamp format: 'YYYY-MM-DD HH:MM:SS.mmm'
                         format!("{}", entry.timestamp.format("%Y-%m-%d %H:%M:%S%.3f")),
                         Style::default().fg(Color::Gray).add_modifier(Modifier::DIM),
                     ),
@@ -493,11 +560,9 @@ fn render_logs(f: &mut Frame, area: Rect, dash: &DashboardState) {
             }
         }
     }
-    // --- FIX: Clamp scroll and always show latest logs in real time ---
-    let max_visible = 30;
+    let max_visible = (area.height as usize).saturating_sub(2);
     let total = flat_lines.len();
-    // Clamp log_scroll to available lines
-    let log_scroll = dash.log_scroll.min(total.saturating_sub(max_visible));
+    let log_scroll = if dash.autoscroll { 0 } else { dash.log_scroll.min(total.saturating_sub(max_visible)) };
     let start = total.saturating_sub(max_visible + log_scroll);
     let end = total.saturating_sub(log_scroll);
     let visible = if start < end && end <= total { &flat_lines[start..end] } else { &[] };
@@ -525,4 +590,219 @@ fn render_alerts(f: &mut Frame, area: Rect, dash: &DashboardState) {
     let alerts = List::new(items)
         .block(Block::default().borders(Borders::ALL).title(Span::styled("Alerts", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
     f.render_widget(alerts, area);
+}
+
+// --- Overview Panel Renderer ---
+fn render_overview(f: &mut Frame, area: Rect, dash: &DashboardState) {
+    use ratatui::widgets::{Table, Row, Cell, Block, Borders, Sparkline};
+    use ratatui::layout::{Layout, Constraint, Direction};
+    use ratatui::style::{Style, Color, Modifier};
+    use ratatui::text::Span;
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ])
+        .split(area);
+    // Left: Metrics Table
+    let m = &dash.metrics;
+    let avg_response = dash.response_time_ms_hist.as_vec();
+    let avg_response = if avg_response.is_empty() { 0 } else { avg_response.iter().sum::<u64>() / avg_response.len() as u64 };
+    let avg_tx_cost = dash.metrics.last_tx_cost.map(|c| format!("{c:.4} ETH")).unwrap_or("-".to_string());
+    let rows = vec![
+        Row::new(vec![Cell::from("Total Feeds"), Cell::from(m.feed_count.to_string())]),
+        Row::new(vec![Cell::from("Active Errors"), Cell::from(m.error_count.to_string())]),
+        Row::new(vec![Cell::from("Total Txs Today"), Cell::from(m.tx_count.to_string())]),
+        Row::new(vec![Cell::from("Total Updates"), Cell::from(m.update_total_count.to_string())]),
+        Row::new(vec![Cell::from("Avg Tx Cost"), Cell::from(avg_tx_cost)]),
+        Row::new(vec![Cell::from("Avg Response Time"), Cell::from(format!("{avg_response} ms"))]),
+        Row::new(vec![Cell::from("Max Data Staleness"), Cell::from(Span::styled(
+            format!("{:.1} s", dash.metrics.avg_staleness_secs),
+            if dash.metrics.avg_staleness_secs > 300.0 { Style::default().fg(Color::Red).add_modifier(Modifier::BOLD) } else { Style::default() }
+        ))]),
+    ];
+    let table = Table::new(rows, [Constraint::Length(20), Constraint::Min(10)])
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Overview", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .style(Style::default().bg(Color::Black));
+    f.render_widget(table, chunks[0]);
+    // Right: Sparklines
+    let gas_hist = dash.gas_price_gwei_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
+    let resp_hist = dash.response_time_ms_hist.as_vec();
+    let spark_gas = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Gas Price (Gwei)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&gas_hist)
+        .style(Style::default().fg(Color::Green).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
+    let spark_resp = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Response Time (ms)", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&resp_hist)
+        .style(Style::default().fg(Color::Blue).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
+    let spark_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[1]);
+    f.render_widget(spark_gas, spark_chunks[0]);
+    f.render_widget(spark_resp, spark_chunks[1]);
+}
+
+// --- Live Panel Renderer ---
+fn render_panel_live(f: &mut Frame, area: Rect, dash: &DashboardState) {
+    use ratatui::widgets::{Sparkline, Gauge, Block, Borders};
+    use ratatui::layout::{Layout, Constraint, Direction};
+    use ratatui::style::{Style, Color, Modifier};
+    use ratatui::text::Span;
+    // New layout: vertical split, top 50% for charts, bottom 50% for gauges
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(50), // Top: charts
+            Constraint::Percentage(50), // Bottom: gauges
+        ])
+        .split(area);
+    // Top: horizontal split for charts
+    let chart_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[0]);
+    // Gas price sparkline
+    let gas_hist = dash.gas_price_gwei_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
+    let spark_gas = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Gas Price (Gwei)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&gas_hist)
+        .style(Style::default().fg(Color::Green).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
+    f.render_widget(spark_gas, chart_chunks[0]);
+    // Response time sparkline
+    let resp_hist = dash.response_time_ms_hist.as_vec();
+    let spark_resp = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Response Time (ms)", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&resp_hist)
+        .style(Style::default().fg(Color::Blue).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
+    f.render_widget(spark_resp, chart_chunks[1]);
+    // Bottom: vertical split for gauges (each gets 50% of bottom area)
+    let gauge_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[1]);
+    // Use real metrics from dash.metrics
+    let success = dash.metrics.update_success_count as u16;
+    let total = dash.metrics.update_total_count as u16;
+    let staleness = dash.metrics.avg_staleness_secs;
+    let gauge_success = Gauge::default()
+        .block(Block::default().title(Span::styled("Update Success Ratio", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))).borders(Borders::ALL).style(Style::default().bg(Color::Black)))
+        .gauge_style(Style::default().fg(Color::Magenta).bg(Color::Black).add_modifier(Modifier::BOLD))
+        .ratio(if total > 0 { success as f64 / total as f64 } else { 0.0 })
+        .label(format!("{:.1}% ({}/{})", if total > 0 { 100.0 * (success as f64 / total as f64) } else { 0.0 }, success, total));
+    let gauge_stale = Gauge::default()
+        .block(Block::default().title(Span::styled("Avg Staleness", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))).borders(Borders::ALL).style(Style::default().bg(Color::Black)))
+        .gauge_style(Style::default().fg(if staleness > 300.0 { Color::Red } else { Color::Cyan }).bg(Color::Black))
+        .ratio((staleness.min(600.0)) / 600.0)
+        .label(format!("{:.1} s", staleness));
+    f.render_widget(gauge_success, gauge_chunks[0]);
+    f.render_widget(gauge_stale, gauge_chunks[1]);
+}
+
+// --- Feeds Panel Renderer ---
+fn render_panel_feeds(f: &mut Frame, area: Rect, dash: &DashboardState) {
+    use ratatui::widgets::{Table, Row, Cell, Block, Borders, Gauge, List, ListItem};
+    use ratatui::layout::{Layout, Constraint, Direction};
+    use ratatui::style::{Style, Color, Modifier};
+    use ratatui::text::{Span, Line};
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(6), // Feeds table
+            Constraint::Length(7), // Alerts
+        ])
+        .split(area);
+    // Feeds Table
+    let feed_rows: Vec<Row> = dash.feeds.iter().map(|feed| {
+        let countdown = feed.next_update.saturating_duration_since(Instant::now()).as_secs();
+        let error_style = if feed.error.is_some() { Style::default().fg(Color::Red).add_modifier(Modifier::BOLD) } else { Style::default() };
+        Row::new(vec![
+            Cell::from(feed.name.clone()),
+            Cell::from(feed.last_value.clone()),
+            Cell::from(format!("{}s", countdown)),
+            Cell::from(Span::styled(feed.error.clone().unwrap_or_default(), error_style)),
+        ])
+    }).collect();
+    let table = Table::new(feed_rows, [Constraint::Length(16), Constraint::Length(16), Constraint::Length(8), Constraint::Min(8)])
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Feeds", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))));
+    f.render_widget(table, chunks[0]);
+    // Alerts List
+    let animate = dash.group_state.animate_tick % 8 < 4;
+    let items: Vec<ListItem> = dash.alerts.iter().rev().take(5)
+        .map(|msg| {
+            let is_critical = msg.to_lowercase().contains("critical") || msg.to_lowercase().contains("error");
+            let style = if is_critical && animate {
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD | Modifier::RAPID_BLINK)
+            } else {
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+            };
+            ListItem::new(Line::from(vec![Span::styled(msg, style)]))
+        })
+        .collect();
+    let alerts = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Alerts", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))));
+    f.render_widget(alerts, chunks[1]);
+}
+
+// --- Network Bar Renderer ---
+fn render_network_bar(f: &mut Frame, area: Rect, dash: &DashboardState) {
+    use ratatui::widgets::{Paragraph, Block, Borders};
+    use ratatui::style::{Style, Color, Modifier};
+    use ratatui::text::Span;
+    let mut spans = Vec::new();
+    for (i, net) in dash.networks.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw("  |  "));
+        }
+        let color = if net.rpc_ok { Color::Green } else { Color::Red };
+        spans.push(Span::styled(format!("[{}]", net.name), Style::default().fg(color).add_modifier(Modifier::BOLD)));
+        spans.push(Span::raw(format!(" ✓ | chain_id: {} | block: {}",
+            net.chain_id.map(|id| id.to_string()).unwrap_or("-".to_string()),
+            net.block_number.map(|b| b.to_string()).unwrap_or("-".to_string())
+        )));
+    }
+    let bar = Paragraph::new(ratatui::text::Line::from(spans))
+        .block(Block::default().borders(Borders::ALL).title("Network"));
+    f.render_widget(bar, area);
+}
+
+// --- Command Input Renderer ---
+fn render_command_input(f: &mut Frame, area: Rect, dash: &DashboardState) {
+    use ratatui::widgets::{Paragraph, Block, Borders};
+    use ratatui::style::{Style, Color};
+    let input = Paragraph::new(dash.input_buffer.clone())
+        .block(Block::default().title("Command").borders(Borders::ALL).border_style(Style::default().fg(Color::Magenta)));
+    f.render_widget(input, area);
+}
+
+// --- Help Overlay Renderer ---
+fn render_help_overlay(f: &mut Frame, area: Rect, _dash: &DashboardState) {
+    use ratatui::widgets::{Paragraph, Block, Borders, Clear};
+    use ratatui::style::{Style, Color, Modifier};
+    use ratatui::text::Span;
+    let help = "q Quit | Tab Switch Panel | : Command | ↑/↓ Scroll Logs  \nb Bottom | t Top | Esc Exit Input | ? Toggle Help";
+    let para = Paragraph::new(ratatui::text::Line::from(vec![Span::raw(help)]))
+        .block(Block::default().title("Help").borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
+        .style(Style::default().bg(Color::Black).fg(Color::White));
+    let popup = ratatui::layout::Rect {
+        x: area.x + area.width / 6,
+        y: area.y + area.height / 3,
+        width: area.width * 2 / 3,
+        height: 7,
+    };
+    f.render_widget(Clear, popup);
+    f.render_widget(para, popup);
+}
+
+// --- Utility function to create centered rectangle ---
+fn centered_rect(width: u16, height: u16, size: ratatui::layout::Size) -> Rect {
+    let x = (size.width - width) / 2;
+    let y = (size.height - height) / 2;
+    Rect::new(x, y, width, height)
 }

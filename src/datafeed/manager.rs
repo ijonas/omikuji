@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::{info, error};
 use alloy::primitives::I256;
+use tokio::sync::RwLock;
 
 /// Manages all datafeed monitors
 pub struct FeedManager {
@@ -41,7 +42,7 @@ impl FeedManager {
     
     /// Starts monitoring all configured datafeeds
     /// Each datafeed runs in its own tokio task
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self, dashboard: Option<Arc<RwLock<crate::tui::DashboardState>>>) {
         info!("Starting feed manager with {} datafeeds", self.config.datafeeds.len());
         
         let contract_reader = ContractConfigReader::new(&self.network_manager);
@@ -50,7 +51,7 @@ impl FeedManager {
             // Configure the datafeed (either from contract or YAML)
             match self.configure_datafeed(&mut datafeed, &contract_reader).await {
                 Ok(_) => {
-                    let handle = self.spawn_monitor(datafeed);
+                    let handle = self.spawn_monitor(datafeed, dashboard.clone());
                     self.handles.push(handle);
                 }
                 Err(feed_name) => {
@@ -134,7 +135,7 @@ impl FeedManager {
     }
     
     /// Spawns a monitor task for a single datafeed
-    fn spawn_monitor(&self, datafeed: Datafeed) -> JoinHandle<()> {
+    fn spawn_monitor(&self, datafeed: Datafeed, dashboard: Option<Arc<RwLock<crate::tui::DashboardState>>>) -> JoinHandle<()> {
         let monitor = FeedMonitor::new(
             datafeed.clone(), 
             Arc::clone(&self.fetcher),
@@ -144,10 +145,9 @@ impl FeedManager {
             self.tx_log_repo.clone()
         );
         let feed_name = datafeed.name.clone();
-        
         tokio::spawn(async move {
             info!("Spawning monitor task for datafeed '{}'", feed_name);
-            monitor.start().await;
+            monitor.start(dashboard).await;
         })
     }
     
