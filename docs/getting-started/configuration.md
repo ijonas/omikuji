@@ -291,6 +291,11 @@ datafeeds:
     deviation_threshold_pct: 0.5           # Update on 0.5% change
     feed_url: https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD
     feed_json_path: USD
+
+key_storage:
+  storage_type: keyring
+  keyring:
+    service: omikuji 
 ```
 
 ## Configuration File Location
