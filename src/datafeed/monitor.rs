@@ -4,10 +4,11 @@ use super::json_extractor::JsonExtractor;
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::database::models::NewFeedLog;
 use crate::database::{FeedLogRepository, TransactionLogRepository};
-use crate::metrics::FeedMetrics;
+use crate::metrics::{FeedMetrics, UpdateMetrics, QualityMetrics};
 use crate::network::NetworkManager;
 use anyhow::Result;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
 
@@ -19,6 +20,8 @@ pub struct FeedMonitor {
     config: OmikujiConfig,
     repository: Option<Arc<FeedLogRepository>>,
     tx_log_repo: Option<Arc<TransactionLogRepository>>,
+    last_value: Option<f64>,
+    last_check_time: Option<Instant>,
 }
 
 impl FeedMonitor {
@@ -38,12 +41,14 @@ impl FeedMonitor {
             config,
             repository,
             tx_log_repo,
+            last_value: None,
+            last_check_time: None,
         }
     }
 
     /// Starts monitoring the datafeed
     /// This runs indefinitely, polling at the configured interval
-    pub async fn start(self) {
+    pub async fn start(mut self) {
         let mut interval = interval(Duration::from_secs(self.datafeed.check_frequency));
 
         info!(
@@ -53,6 +58,19 @@ impl FeedMonitor {
 
         loop {
             interval.tick().await;
+            
+            // Record check interval if we have a previous check time
+            if let Some(last_check) = self.last_check_time {
+                let interval_seconds = last_check.elapsed().as_secs_f64();
+                UpdateMetrics::record_check_interval(
+                    &self.datafeed.name,
+                    &self.datafeed.networks,
+                    interval_seconds,
+                );
+            }
+            
+            let check_start = Instant::now();
+            self.last_check_time = Some(check_start);
 
             match self.poll_once().await {
                 Ok((value, timestamp)) => {
@@ -68,6 +86,47 @@ impl FeedMonitor {
                         value,
                         timestamp,
                     );
+                    
+                    // Update quality metrics
+                    if let Some(last_val) = self.last_value {
+                        let time_delta = check_start.elapsed().as_secs_f64();
+                        
+                        // Record value change rate
+                        QualityMetrics::record_value_change_rate(
+                            &self.datafeed.name,
+                            &self.datafeed.networks,
+                            last_val,
+                            value,
+                            time_delta,
+                        );
+                        
+                        // Check for outliers (simple range check - could be enhanced)
+                        let expected_min = last_val * 0.5; // 50% below last value
+                        let expected_max = last_val * 2.0; // 200% of last value
+                        if value < expected_min || value > expected_max {
+                            QualityMetrics::record_outlier(
+                                &self.datafeed.name,
+                                &self.datafeed.networks,
+                                value,
+                                (expected_min, expected_max),
+                                "logged",
+                            );
+                        }
+                    }
+                    
+                    // Update timestamp drift
+                    let current_time = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    QualityMetrics::record_timestamp_drift(
+                        &self.datafeed.name,
+                        &self.datafeed.networks,
+                        timestamp,
+                        current_time,
+                    );
+                    
+                    self.last_value = Some(value);
 
                     // Update contract metrics (read current contract state)
                     let updater = if let Some(ref tx_repo) = self.tx_log_repo {
@@ -145,7 +204,11 @@ impl FeedMonitor {
     /// Returns (value, timestamp) on success
     async fn poll_once(&self) -> Result<(f64, u64)> {
         // Fetch JSON from the feed URL
-        let json = self.fetcher.fetch_json(&self.datafeed.feed_url).await?;
+        let json = self.fetcher.fetch_json(
+            &self.datafeed.feed_url,
+            &self.datafeed.name,
+            &self.datafeed.networks
+        ).await?;
 
         // Extract value and timestamp
         let (value, timestamp) = JsonExtractor::extract_feed_data(

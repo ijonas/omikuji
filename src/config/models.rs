@@ -2,6 +2,8 @@ use alloy::primitives::I256;
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 
+use super::metrics_config::MetricsConfig;
+
 /// The main configuration structure for Omikuji
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct OmikujiConfig {
@@ -22,6 +24,10 @@ pub struct OmikujiConfig {
     #[serde(default)]
     #[validate]
     pub key_storage: KeyStorageConfig,
+
+    /// Metrics configuration
+    #[serde(default)]
+    pub metrics: MetricsConfig,
 }
 
 /// Configuration for database cleanup task

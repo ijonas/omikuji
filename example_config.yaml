@@ -43,3 +43,19 @@ key_storage:
   storage_type: env          # "keyring" or "env" (default: env for backward compatibility)
   keyring:
     service: omikuji         # Service name for keyring (default: omikuji)
+
+# Metrics configuration
+metrics:
+  enabled: true              # Enable metrics collection (default: true)
+  port: 9090                # Prometheus metrics port (default: 9090)
+  detailed_metrics: false    # Enable high-cardinality metrics (default: false)
+  categories:               # Enable/disable specific metric categories
+    datasource: true        # Data source health metrics
+    update_decisions: true  # Update decision tracking
+    network: true          # Network/RPC metrics
+    contract: true         # Contract interaction metrics
+    quality: true          # Data quality metrics (requires detailed_metrics)
+    economic: true         # Economic/cost tracking
+    performance: true      # Performance metrics (requires detailed_metrics)
+    config: true           # Configuration info metrics
+    alerts: true           # Alert-worthy metrics

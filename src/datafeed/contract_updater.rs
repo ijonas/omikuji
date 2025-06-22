@@ -17,7 +17,7 @@ use super::contract_utils::{
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::contracts::FluxAggregatorContract;
 use crate::database::TransactionLogRepository;
-use crate::metrics::FeedMetrics;
+use crate::metrics::{FeedMetrics, UpdateMetrics, UpdateReason, SkipReason};
 use crate::network::NetworkManager;
 
 /// Handles contract updates based on time and deviation thresholds
@@ -127,6 +127,24 @@ impl<'a> ContractUpdater<'a> {
             datafeed.name, time_since_update, datafeed.minimum_update_frequency
         );
 
+        // Update time since last metric
+        UpdateMetrics::update_time_since_last(
+            &datafeed.name,
+            &datafeed.networks,
+            time_since_update as f64,
+            time_since_update as f64,
+        );
+
+        // Check if minimum frequency is violated
+        if time_since_update > datafeed.minimum_update_frequency * 2 {
+            UpdateMetrics::record_frequency_violation(
+                &datafeed.name,
+                &datafeed.networks,
+                time_since_update as f64,
+                datafeed.minimum_update_frequency as f64,
+            );
+        }
+
         // Check if enough time has passed
         Ok(time_since_update >= datafeed.minimum_update_frequency)
     }
@@ -179,7 +197,22 @@ impl<'a> ContractUpdater<'a> {
                 "Datafeed {}: deviation {}% exceeds threshold {}%",
                 datafeed.name, deviation, datafeed.deviation_threshold_pct
             );
+            
+            // Record deviation breach
+            UpdateMetrics::record_deviation_breach(
+                &datafeed.name,
+                &datafeed.networks,
+                deviation,
+                datafeed.deviation_threshold_pct,
+            );
         }
+
+        // Record deviation at check time
+        UpdateMetrics::record_update_deviation(
+            &datafeed.name,
+            &datafeed.networks,
+            deviation,
+        );
 
         Ok(exceeds_threshold)
     }
@@ -198,12 +231,23 @@ impl<'a> ContractUpdater<'a> {
             .await?;
 
         // Determine if update is needed and why
-        match (time_check, deviation_check) {
-            (true, true) => Ok((true, "both time and deviation thresholds")),
-            (true, false) => Ok((true, "time threshold")),
-            (false, true) => Ok((true, "deviation threshold")),
-            (false, false) => Ok((false, "")),
-        }
+        let (should_update, reason_str, update_reason, skip_reason) = match (time_check, deviation_check) {
+            (true, true) => (true, "both time and deviation thresholds", Some(UpdateReason::Both), None),
+            (true, false) => (true, "time threshold", Some(UpdateReason::TimeThreshold), None),
+            (false, true) => (true, "deviation threshold", Some(UpdateReason::DeviationThreshold), None),
+            (false, false) => (false, "", None, Some(SkipReason::NoDeviation)),
+        };
+
+        // Record update decision
+        UpdateMetrics::record_update_decision(
+            &datafeed.name,
+            &datafeed.networks,
+            should_update,
+            update_reason,
+            skip_reason,
+        );
+
+        Ok((should_update, reason_str))
     }
 
     /// Submits a new value to the contract
@@ -253,6 +297,13 @@ impl<'a> ContractUpdater<'a> {
             .get_wallet_address(&datafeed.networks)
             .ok(); // It's optional, so we use ok() to convert Result to Option
 
+        // Record update attempt
+        UpdateMetrics::record_update_attempt(
+            &datafeed.name,
+            &datafeed.networks,
+            false, // Will update to true if successful
+        );
+
         // Submit the transaction with gas estimation
         match contract
             .submit_price_with_gas_estimation(
@@ -271,6 +322,23 @@ impl<'a> ContractUpdater<'a> {
                     receipt.transaction_hash, receipt.gas_used
                 );
 
+                // Record successful update attempt
+                UpdateMetrics::record_update_attempt(
+                    &datafeed.name,
+                    &datafeed.networks,
+                    true,
+                );
+
+                // Record update lag if we have timestamp info
+                if let Ok(current_time) = current_timestamp() {
+                    UpdateMetrics::record_update_lag(
+                        &datafeed.name,
+                        &datafeed.networks,
+                        current_time - 60, // Approximate feed timestamp (1 minute ago)
+                        current_time,
+                    );
+                }
+
                 // Record contract update in metrics
                 FeedMetrics::record_contract_update(&datafeed.name, &datafeed.networks);
 
@@ -278,6 +346,9 @@ impl<'a> ContractUpdater<'a> {
             }
             Err(e) => {
                 error!("Failed to submit value to contract: {}", e);
+                
+                // Update attempt already recorded as failure above
+                
                 Err(anyhow::anyhow!(
                     "{}: {}",
                     errors::CONTRACT_SUBMISSION_FAILED,

@@ -69,6 +69,13 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Initialize metrics configuration
+    use crate::metrics::{ConfigMetrics, init_metrics_config};
+    init_metrics_config(config.metrics.clone());
+    
+    // Record configuration metrics
+    ConfigMetrics::record_startup_info(&config);
+
     // Display loaded configuration
     info!(
         "Loaded {} network(s) and {} datafeed(s)",
@@ -175,15 +182,18 @@ async fn main() -> Result<()> {
                     if let Err(e) = database::connection::run_migrations(&pool).await {
                         error!("Failed to run database migrations: {}", e);
                         error!("Continuing without database support");
+                        ConfigMetrics::set_database_status(false);
                         None
                     } else {
                         info!("Database initialized with feed logging and transaction tracking enabled");
+                        ConfigMetrics::set_database_status(true);
                         Some(pool)
                     }
                 }
                 Err(e) => {
                     error!("Failed to establish database connection: {}", e);
                     error!("Continuing without database logging");
+                    ConfigMetrics::set_database_status(false);
                     None
                 }
             }
@@ -191,6 +201,7 @@ async fn main() -> Result<()> {
         Err(_) => {
             info!("DATABASE_URL not set - running without database logging");
             info!("To enable database logging, set DATABASE_URL environment variable");
+            ConfigMetrics::set_database_status(false);
             None
         }
     };
@@ -227,6 +238,9 @@ async fn main() -> Result<()> {
         error!("Continuing without metrics endpoint");
     } else {
         info!("Prometheus metrics available at http://0.0.0.0:9090/metrics");
+        
+        // Update metrics server status
+        ConfigMetrics::set_metrics_server_status(true, 9090);
     }
 
     // Start wallet balance monitor
