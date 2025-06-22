@@ -125,11 +125,80 @@ feed_json_path_timestamp: data.timestamp    # Unix timestamp from API
 
 If not specified, Omikuji uses the current time.
 
-## Environment Variables
+## Key Management
 
-Sensitive data should use environment variables:
+Omikuji supports two methods for managing private keys: OS keyring (recommended) and environment variables.
 
-### Private Key
+### OS Keyring Storage (Recommended)
+
+The most secure method is to use your operating system's keyring/keychain:
+
+```yaml
+# In your config.yaml
+key_storage:
+  storage_type: keyring    # Use OS keyring
+  keyring:
+    service: omikuji       # Service name in keyring
+```
+
+#### Importing Keys
+
+Import a private key for a specific network:
+
+```bash
+# Import key (will prompt for password)
+omikuji key import --network ethereum
+
+# Import key with explicit service name
+omikuji key import --network ethereum --service my-omikuji
+```
+
+#### Managing Keys
+
+```bash
+# List all stored keys
+omikuji key list
+
+# Export a key (requires confirmation)
+omikuji key export --network ethereum
+
+# Remove a key
+omikuji key remove --network ethereum
+
+# Migrate from environment variables to keyring
+omikuji key migrate
+```
+
+#### Platform Support
+
+- **macOS**: Uses Keychain
+- **Linux**: Uses Secret Service (GNOME Keyring, KDE Wallet)
+- **Windows**: Uses Windows Credential Manager
+
+### Environment Variable Storage
+
+For simpler deployments or CI/CD environments:
+
+```yaml
+# In your config.yaml (this is the default)
+key_storage:
+  storage_type: env
+```
+
+#### Network-Specific Keys
+
+Set environment variables for each network:
+
+```bash
+# Format: OMIKUJI_PRIVATE_KEY_<NETWORK_NAME>
+export OMIKUJI_PRIVATE_KEY_ETHEREUM=your_ethereum_key_here
+export OMIKUJI_PRIVATE_KEY_BASE=your_base_key_here
+export OMIKUJI_PRIVATE_KEY_LOCAL=your_local_key_here
+```
+
+#### Legacy Support
+
+For backward compatibility, you can use a single key for all networks:
 
 ```bash
 # Default variable name
@@ -139,6 +208,57 @@ export OMIKUJI_PRIVATE_KEY=your_private_key_here
 export MY_WALLET_KEY=your_private_key_here
 omikuji -c config.yaml -p MY_WALLET_KEY
 ```
+
+### Key Storage Configuration
+
+Configure key storage in your `config.yaml`:
+
+```yaml
+# Option 1: OS Keyring (recommended)
+key_storage:
+  storage_type: keyring
+  keyring:
+    service: omikuji        # Service identifier in keyring
+    
+# Option 2: Environment Variables
+key_storage:
+  storage_type: env
+  env:
+    prefix: OMIKUJI_PRIVATE_KEY    # Prefix for network-specific vars
+```
+
+### Security Best Practices
+
+1. **Use OS Keyring**: More secure than environment variables
+2. **Network-Specific Keys**: Use different keys for different networks
+3. **Restart After Import**: Keys imported at runtime require daemon restart
+4. **Avoid Logging**: Never log or print private keys
+5. **File Permissions**: If using config files, ensure proper permissions
+
+### Troubleshooting
+
+#### "No wallet address found" Error
+
+This occurs when:
+- Keys haven't been imported for the network
+- Wrong storage type is configured
+- Daemon needs restart after importing keys
+
+Solution:
+1. Check your `key_storage.storage_type` configuration
+2. Import keys: `omikuji key import --network <network-name>`
+3. Restart the daemon
+
+#### Environment Variable Not Found
+
+For network-specific keys, ensure the format is correct:
+- Network name must be uppercase
+- Hyphens become underscores
+- Example: `arbsepolia` → `OMIKUJI_PRIVATE_KEY_ARBSEPOLIA`
+
+## Environment Variables
+
+Other environment variables:
 
 ### Database URL (Optional)
 
