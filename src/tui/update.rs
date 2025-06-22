@@ -49,4 +49,28 @@ pub async fn set_last_tx_cost(dashboard: &Arc<RwLock<DashboardState>>, cost: f64
     dash.metrics.last_tx_cost = Some(cost);
 }
 
+/// Push a new ETH price (in USD) into the dashboard's ETH price history buffer.
+pub async fn push_eth_price(dashboard: &Arc<RwLock<DashboardState>>, price: f64) {
+    let mut dash = dashboard.write().await;
+    dash.eth_price_hist.push(price);
+}
+
+/// Push a new error rate value into a specific network's error rate history buffer by network name.
+pub async fn push_network_error_rate(dashboard: &Arc<RwLock<DashboardState>>, network_name: &str, error_rate: f64) {
+    let mut dash = dashboard.write().await;
+    if let Some(net) = dash.networks.iter_mut().find(|n| n.name == network_name) {
+        net.error_rate_hist.push(error_rate);
+    }
+}
+
+/// Update all networks' error rate histories given a mapping of network name to error rate.
+pub async fn update_all_network_error_rates(dashboard: &Arc<RwLock<DashboardState>>, error_rates: &std::collections::HashMap<String, f64>) {
+    let mut dash = dashboard.write().await;
+    for net in dash.networks.iter_mut() {
+        if let Some(rate) = error_rates.get(&net.name) {
+            net.error_rate_hist.push(*rate);
+        }
+    }
+}
+
 // Add more helpers as needed for your app's metrics.

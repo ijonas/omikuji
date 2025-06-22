@@ -52,6 +52,8 @@ pub struct NetworkStatus {
     pub chain_id: Option<u64>,
     pub block_number: Option<u64>,
     pub wallet_status: String,
+    // --- New: Error rate history for sparkline ---
+    pub error_rate_hist: Ring<120, f64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -100,6 +102,8 @@ pub struct DashboardState {
     pub error_rate_hist: Ring<120, f64>,
     pub update_freq_hist: Ring<120, u64>,
     // pub theme: Theme, // Uncomment if theming is implemented
+    // --- New: ETH price history for overview sparkline
+    pub eth_price_hist: Ring<120, f64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -464,17 +468,38 @@ fn render_feeds(f: &mut Frame, area: Rect, dash: &DashboardState) {
 }
 
 fn render_network(f: &mut Frame, area: Rect, dash: &DashboardState) {
+    let header = Row::new(vec![
+        Cell::from("Name"),
+        Cell::from("Chain ID"),
+        Cell::from("Block"),
+        Cell::from("Wallet"),
+        Cell::from("RPC"),
+        Cell::from("Err Rate"), // New column
+    ]).style(Style::default().add_modifier(Modifier::BOLD));
     let rows: Vec<Row> = dash.networks.iter().map(|net| {
+        let err_hist = net.error_rate_hist.as_vec().iter().map(|v| (*v * 100.0) as u64).collect::<Vec<u64>>();
+        let spark_str = sparkline_str(&err_hist, 16); // 16 chars wide
         Row::new(vec![
             Cell::from(net.name.clone()),
             Cell::from(net.chain_id.map(|id| id.to_string()).unwrap_or("-".to_string())),
             Cell::from(net.block_number.map(|b| b.to_string()).unwrap_or("-".to_string())),
             Cell::from(net.wallet_status.clone()),
             Cell::from(if net.rpc_ok { "OK" } else { "ERR" }),
+            Cell::from(spark_str), // Sparkline as string
         ])
     }).collect();
-    let table = Table::new(rows, [Constraint::Length(16), Constraint::Length(8), Constraint::Length(12), Constraint::Length(12), Constraint::Length(6)])
-        .block(Block::default().borders(Borders::ALL).title(Span::styled("Network", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))));
+    let mut all_rows = Vec::with_capacity(rows.len() + 1);
+    all_rows.push(header);
+    all_rows.extend(rows);
+    let table = Table::new(all_rows, [
+        Constraint::Length(16),
+        Constraint::Length(8),
+        Constraint::Length(12),
+        Constraint::Length(12),
+        Constraint::Length(6),
+        Constraint::Length(18), // Sparkline column
+    ])
+    .block(Block::default().borders(Borders::ALL).title(Span::styled("Network", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))));
     f.render_widget(table, area);
 }
 
@@ -635,7 +660,13 @@ fn render_overview(f: &mut Frame, area: Rect, dash: &DashboardState) {
         .block(Block::default().borders(Borders::ALL).title(Span::styled("Overview", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
         .style(Style::default().bg(Color::Black));
     f.render_widget(table, chunks[0]);
-    // Right: Sparklines
+    // Right: Sparklines (ETH price, Gas price, Response time only)
+    let price_hist = dash.eth_price_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
+    let spark_price = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("ETH Price (USD)", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&price_hist)
+        .style(Style::default().fg(Color::Yellow).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
     let gas_hist = dash.gas_price_gwei_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
     let resp_hist = dash.response_time_ms_hist.as_vec();
     let spark_gas = Sparkline::default()
@@ -650,10 +681,11 @@ fn render_overview(f: &mut Frame, area: Rect, dash: &DashboardState) {
         .bar_set(bar::NINE_LEVELS);
     let spark_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(34)])
         .split(chunks[1]);
-    f.render_widget(spark_gas, spark_chunks[0]);
-    f.render_widget(spark_resp, spark_chunks[1]);
+    f.render_widget(spark_price, spark_chunks[0]);
+    f.render_widget(spark_gas, spark_chunks[1]);
+    f.render_widget(spark_resp, spark_chunks[2]);
 }
 
 // --- Live Panel Renderer ---
@@ -702,14 +734,14 @@ fn render_panel_live(f: &mut Frame, area: Rect, dash: &DashboardState) {
         .style(Style::default().fg(Color::Cyan).bg(Color::Black))
         .bar_set(bar::NINE_LEVELS);
     f.render_widget(spark_stale, top_row[1]);
-    // Error Rate Sparkline
-    let error_rate_hist = dash.error_rate_hist.as_vec().iter().map(|v| (*v * 100.0) as u64).collect::<Vec<u64>>();
-    let spark_error = Sparkline::default()
-        .block(Block::default().borders(Borders::ALL).title(Span::styled("Error Rate (%)", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
-        .data(&error_rate_hist)
-        .style(Style::default().fg(Color::Red).bg(Color::Black))
+    // ETH Price Sparkline (replaces error rate chart)
+    let eth_price_hist = dash.eth_price_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
+    let spark_eth_price = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("ETH Price (USD)", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&eth_price_hist)
+        .style(Style::default().fg(Color::Yellow).bg(Color::Black))
         .bar_set(bar::NINE_LEVELS);
-    f.render_widget(spark_error, bottom_row[0]);
+    f.render_widget(spark_eth_price, bottom_row[0]);
     // Update Frequency Sparkline
     let update_freq_hist = dash.update_freq_hist.as_vec();
     let spark_update = Sparkline::default()
@@ -822,4 +854,25 @@ fn centered_rect(width: u16, height: u16, size: ratatui::layout::Size) -> Rect {
     let x = (size.width - width) / 2;
     let y = (size.height - height) / 2;
     Rect::new(x, y, width, height)
+}
+
+/// Render a sparkline as a string using Unicode block characters (▁▂▃▄▅▆▇█)
+fn sparkline_str(data: &[u64], width: usize) -> String {
+    const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    if data.is_empty() || width == 0 {
+        return String::new();
+    }
+    let len = data.len();
+    let step = (len as f64 / width as f64).max(1.0);
+    let mut out = String::with_capacity(width);
+    let min = *data.iter().min().unwrap_or(&0);
+    let max = *data.iter().max().unwrap_or(&1);
+    let range = (max - min).max(1);
+    for i in 0..width {
+        let idx = (i as f64 * step).floor() as usize;
+        let v = data.get(idx.min(len - 1)).copied().unwrap_or(0);
+        let level = (((v - min) * 7) / range).min(7) as usize;
+        out.push(BLOCKS[level]);
+    }
+    out
 }

@@ -218,46 +218,54 @@ async fn main() -> Result<()> {
             let mut last_update_total = 0;
             let mut last_update_time = std::time::Instant::now();
             loop {
-                // Update network status
-                let mut networks = Vec::new();
-                for net in &config_for_metrics.networks {
-                    let chain_id = network_manager_for_metrics.get_chain_id(&net.name).await.ok();
-                    let block_number = network_manager_for_metrics.get_block_number(&net.name).await.ok();
-                    let rpc_ok = chain_id.is_some() && block_number.is_some();
-                    networks.push(crate::tui::NetworkStatus {
-                        name: net.name.clone(),
-                        rpc_ok,
-                        chain_id,
-                        block_number,
-                        wallet_status: "OK".to_string(),
-                    });
-                }
                 // --- Extract values before mutable borrow ---
-                let (last_tx_cost, avg_staleness_secs, update_success_count, update_total_count) = {
+                let (last_tx_cost, avg_staleness_secs, update_success_count, update_total_count, mut networks, eth_price_opt) = {
                     let dash = dash_for_metrics.read().await;
                     (
                         dash.metrics.last_tx_cost,
                         dash.metrics.avg_staleness_secs,
                         dash.metrics.update_success_count,
                         dash.metrics.update_total_count,
+                        dash.networks.clone(),
+                        // Replace with your real ETH price source:
+                        dash.feeds.iter().find(|f| f.name.to_lowercase().contains("eth") && f.last_value.parse::<f64>().is_ok())
+                            .and_then(|f| f.last_value.parse::<f64>().ok()),
                     )
                 };
+                // --- Update network fields in-place, preserve error_rate_hist ---
+                for net_cfg in &config_for_metrics.networks {
+                    let chain_id = network_manager_for_metrics.get_chain_id(&net_cfg.name).await.ok();
+                    let block_number = network_manager_for_metrics.get_block_number(&net_cfg.name).await.ok();
+                    let rpc_ok = chain_id.is_some() && block_number.is_some();
+                    if let Some(net) = networks.iter_mut().find(|n| n.name == net_cfg.name) {
+                        net.chain_id = chain_id;
+                        net.block_number = block_number;
+                        net.rpc_ok = rpc_ok;
+                        // Optionally update wallet_status here
+                    } else {
+                        // If new network appears, add it
+                        networks.push(crate::tui::NetworkStatus {
+                            name: net_cfg.name.clone(),
+                            rpc_ok,
+                            chain_id,
+                            block_number,
+                            wallet_status: "OK".to_string(),
+                            error_rate_hist: Default::default(),
+                        });
+                    }
+                }
                 {
                     let mut dash = dash_for_metrics.write().await;
                     dash.networks = networks;
                     // --- Push new values to live sparklines ---
-                    // Tx cost
                     if let Some(cost) = last_tx_cost {
                         dash.tx_cost_hist.push(cost);
                     }
-                    // Staleness
                     dash.staleness_hist.push(avg_staleness_secs);
-                    // Error rate
                     let error_rate = if update_total_count > 0 {
                         1.0 - (update_success_count as f64 / update_total_count as f64)
                     } else { 0.0 };
                     dash.error_rate_hist.push(error_rate);
-                    // Update frequency (updates per minute)
                     let now = std::time::Instant::now();
                     let dt = now.duration_since(last_update_time).as_secs_f64();
                     let update_delta = update_total_count.saturating_sub(last_update_total);
@@ -265,8 +273,13 @@ async fn main() -> Result<()> {
                     dash.update_freq_hist.push(freq.round() as u64);
                     last_update_total = update_total_count;
                     last_update_time = now;
+                    // --- Update ETH price history with real data if available ---
+                    if let Some(eth_price) = eth_price_opt {
+                        dash.eth_price_hist.push(eth_price);
+                    }
                 }
-                // Update staleness and error counts
+                // Optionally: update per-network error rates here if you have real data per network
+                // update::update_all_network_error_rates(&dash_for_metrics, &network_error_rates).await;
                 update::update_avg_staleness(&dash_for_metrics).await;
                 update::update_counts(&dash_for_metrics).await;
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -482,46 +495,54 @@ async fn main() -> Result<()> {
             let mut last_update_total = 0;
             let mut last_update_time = std::time::Instant::now();
             loop {
-                // Update network status
-                let mut networks = Vec::new();
-                for net in &config_for_metrics.networks {
-                    let chain_id = network_manager_for_metrics.get_chain_id(&net.name).await.ok();
-                    let block_number = network_manager_for_metrics.get_block_number(&net.name).await.ok();
-                    let rpc_ok = chain_id.is_some() && block_number.is_some();
-                    networks.push(crate::tui::NetworkStatus {
-                        name: net.name.clone(),
-                        rpc_ok,
-                        chain_id,
-                        block_number,
-                        wallet_status: "OK".to_string(),
-                    });
-                }
                 // --- Extract values before mutable borrow ---
-                let (last_tx_cost, avg_staleness_secs, update_success_count, update_total_count) = {
+                let (last_tx_cost, avg_staleness_secs, update_success_count, update_total_count, mut networks, eth_price_opt) = {
                     let dash = dash_for_metrics.read().await;
                     (
                         dash.metrics.last_tx_cost,
                         dash.metrics.avg_staleness_secs,
                         dash.metrics.update_success_count,
                         dash.metrics.update_total_count,
+                        dash.networks.clone(),
+                        // Replace with your real ETH price source:
+                        dash.feeds.iter().find(|f| f.name.to_lowercase().contains("eth") && f.last_value.parse::<f64>().is_ok())
+                            .and_then(|f| f.last_value.parse::<f64>().ok()),
                     )
                 };
+                // --- Update network fields in-place, preserve error_rate_hist ---
+                for net_cfg in &config_for_metrics.networks {
+                    let chain_id = network_manager_for_metrics.get_chain_id(&net_cfg.name).await.ok();
+                    let block_number = network_manager_for_metrics.get_block_number(&net_cfg.name).await.ok();
+                    let rpc_ok = chain_id.is_some() && block_number.is_some();
+                    if let Some(net) = networks.iter_mut().find(|n| n.name == net_cfg.name) {
+                        net.chain_id = chain_id;
+                        net.block_number = block_number;
+                        net.rpc_ok = rpc_ok;
+                        // Optionally update wallet_status here
+                    } else {
+                        // If new network appears, add it
+                        networks.push(crate::tui::NetworkStatus {
+                            name: net_cfg.name.clone(),
+                            rpc_ok,
+                            chain_id,
+                            block_number,
+                            wallet_status: "OK".to_string(),
+                            error_rate_hist: Default::default(),
+                        });
+                    }
+                }
                 {
                     let mut dash = dash_for_metrics.write().await;
                     dash.networks = networks;
                     // --- Push new values to live sparklines ---
-                    // Tx cost
                     if let Some(cost) = last_tx_cost {
                         dash.tx_cost_hist.push(cost);
                     }
-                    // Staleness
                     dash.staleness_hist.push(avg_staleness_secs);
-                    // Error rate
                     let error_rate = if update_total_count > 0 {
                         1.0 - (update_success_count as f64 / update_total_count as f64)
                     } else { 0.0 };
                     dash.error_rate_hist.push(error_rate);
-                    // Update frequency (updates per minute)
                     let now = std::time::Instant::now();
                     let dt = now.duration_since(last_update_time).as_secs_f64();
                     let update_delta = update_total_count.saturating_sub(last_update_total);
@@ -529,8 +550,13 @@ async fn main() -> Result<()> {
                     dash.update_freq_hist.push(freq.round() as u64);
                     last_update_total = update_total_count;
                     last_update_time = now;
+                    // --- Update ETH price history with real data if available ---
+                    if let Some(eth_price) = eth_price_opt {
+                        dash.eth_price_hist.push(eth_price);
+                    }
                 }
-                // Update staleness and error counts
+                // Optionally: update per-network error rates here if you have real data per network
+                // update::update_all_network_error_rates(&dash_for_metrics, &network_error_rates).await;
                 update::update_avg_staleness(&dash_for_metrics).await;
                 update::update_counts(&dash_for_metrics).await;
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
