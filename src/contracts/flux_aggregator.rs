@@ -2,7 +2,7 @@ use crate::config::models::Network as NetworkConfig;
 use crate::database::TransactionLogRepository;
 use crate::gas::GasEstimate;
 use crate::metrics::gas_metrics::{GasMetrics, TransactionDetails};
-use crate::metrics::{ContractMetrics, EconomicMetrics};
+use crate::metrics::ContractMetrics;
 use alloy::{
     network::{Ethereum, TransactionBuilder},
     primitives::{Address, I256, U256},
@@ -423,22 +423,6 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                         &network_config.transaction_type,
                     );
 
-                    // Record economic metrics
-                    let gas_used = receipt.gas_used;
-                    let effective_gas_price = U256::from(receipt.effective_gas_price);
-                    let total_cost_wei = U256::from(gas_used).saturating_mul(effective_gas_price);
-                    let total_cost_native = total_cost_wei.to::<u128>() as f64 / 1e18;
-                    
-                    // Get native token price for economic metrics
-                    let native_token_price = Self::get_native_token_price(&network_config.name);
-                    
-                    EconomicMetrics::record_gas_cost_usd(
-                        feed_name,
-                        &network_config.name,
-                        total_cost_native,
-                        native_token_price,
-                    );
-
                     // Log transaction if repository is available
                     if let Some(repo) = &tx_log_repo {
                         if let Err(e) = Self::log_transaction(
@@ -548,21 +532,5 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
 
         repo.save_transaction(details).await?;
         Ok(())
-    }
-    
-    /// Get native token price for a network (simplified - in production this would come from a price feed)
-    fn get_native_token_price(network_name: &str) -> f64 {
-        // Simplified price mapping - in production this would query an actual price feed
-        match network_name.to_lowercase().as_str() {
-            name if name.contains("mainnet") || name.contains("ethereum") => 2500.0, // ETH price
-            name if name.contains("polygon") || name.contains("matic") => 0.70,     // MATIC price
-            name if name.contains("arbitrum") => 2500.0,                            // ETH on L2
-            name if name.contains("optimism") => 2500.0,                            // ETH on L2
-            name if name.contains("base") => 2500.0,                                // ETH on L2
-            name if name.contains("bsc") || name.contains("binance") => 350.0,      // BNB price
-            name if name.contains("avalanche") || name.contains("avax") => 25.0,    // AVAX price
-            name if name.contains("fantom") => 0.40,                                // FTM price
-            _ => 1.0, // Default for unknown/test networks
-        }
     }
 }

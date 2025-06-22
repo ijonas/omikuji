@@ -3,6 +3,7 @@ use super::fetcher::Fetcher;
 use super::monitor::FeedMonitor;
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::database::{DatabasePool, FeedLogRepository, TransactionLogRepository};
+use crate::gas_price::GasPriceManager;
 use crate::network::NetworkManager;
 use alloy::primitives::I256;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ pub struct FeedManager {
     fetcher: Arc<Fetcher>,
     repository: Option<Arc<FeedLogRepository>>,
     tx_log_repo: Option<Arc<TransactionLogRepository>>,
+    gas_price_manager: Option<Arc<GasPriceManager>>,
     handles: Vec<JoinHandle<()>>,
 }
 
@@ -28,6 +30,7 @@ impl FeedManager {
             fetcher: Arc::new(Fetcher::new()),
             repository: None,
             tx_log_repo: None,
+            gas_price_manager: None,
             handles: Vec::new(),
         }
     }
@@ -36,6 +39,12 @@ impl FeedManager {
     pub fn with_repository(mut self, pool: DatabasePool) -> Self {
         self.repository = Some(Arc::new(FeedLogRepository::new(pool.clone())));
         self.tx_log_repo = Some(Arc::new(TransactionLogRepository::new(pool)));
+        self
+    }
+
+    /// Sets the gas price manager for USD cost tracking
+    pub fn with_gas_price_manager(mut self, gas_price_manager: Arc<GasPriceManager>) -> Self {
+        self.gas_price_manager = Some(gas_price_manager);
         self
     }
 
@@ -151,7 +160,7 @@ impl FeedManager {
 
     /// Spawns a monitor task for a single datafeed
     fn spawn_monitor(&self, datafeed: Datafeed) -> JoinHandle<()> {
-        let monitor = FeedMonitor::new(
+        let mut monitor = FeedMonitor::new(
             datafeed.clone(),
             Arc::clone(&self.fetcher),
             Arc::clone(&self.network_manager),
@@ -159,6 +168,12 @@ impl FeedManager {
             self.repository.clone(),
             self.tx_log_repo.clone(),
         );
+        
+        // Set gas price manager if available
+        if let Some(ref gas_price_manager) = self.gas_price_manager {
+            monitor = monitor.with_gas_price_manager(Arc::clone(gas_price_manager));
+        }
+        
         let feed_name = datafeed.name.clone();
 
         tokio::spawn(async move {

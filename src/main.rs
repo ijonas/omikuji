@@ -10,6 +10,7 @@ mod contracts;
 mod database;
 mod datafeed;
 mod gas;
+mod gas_price;
 mod metrics;
 mod network;
 mod ui;
@@ -222,12 +223,56 @@ async fn main() -> Result<()> {
         None
     };
 
+    // Initialize gas price manager
+    let gas_price_manager = if config.gas_price_feeds.enabled {
+        info!("Initializing gas price feed manager");
+        
+        // Build token mappings from network configurations
+        let mut token_mappings = std::collections::HashMap::new();
+        for network in &config.networks {
+            token_mappings.insert(network.name.clone(), network.gas_token.clone());
+        }
+        
+        // Create transaction repository if database is available
+        let tx_repo = database_pool.as_ref().map(|pool| {
+            Arc::new(database::transaction_repository::TransactionLogRepository::new(pool.clone()))
+        });
+        
+        let gas_price_manager = Arc::new(gas_price::GasPriceManager::new(
+            config.gas_price_feeds.clone(),
+            token_mappings,
+            tx_repo,
+        ));
+        
+        // Start the price update loop
+        gas_price_manager.clone().start().await;
+        
+        Some(gas_price_manager)
+    } else {
+        info!("Gas price feeds are disabled");
+        None
+    };
+
     // Initialize and start datafeed monitoring
     let mut feed_manager = if let Some(pool) = database_pool {
-        datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
-            .with_repository(pool)
+        let mut manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
+            .with_repository(pool);
+        
+        // Add gas price manager if available
+        if let Some(ref gas_price_manager) = gas_price_manager {
+            manager = manager.with_gas_price_manager(Arc::clone(gas_price_manager));
+        }
+        
+        manager
     } else {
-        datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
+        let mut manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager));
+        
+        // Add gas price manager if available
+        if let Some(ref gas_price_manager) = gas_price_manager {
+            manager = manager.with_gas_price_manager(Arc::clone(gas_price_manager));
+        }
+        
+        manager
     };
 
     feed_manager.start().await;
@@ -244,7 +289,10 @@ async fn main() -> Result<()> {
     }
 
     // Start wallet balance monitor
-    let wallet_monitor = wallet::WalletBalanceMonitor::new(Arc::clone(&network_manager));
+    let mut wallet_monitor = wallet::WalletBalanceMonitor::new(Arc::clone(&network_manager));
+    if let Some(ref gas_price_manager) = gas_price_manager {
+        wallet_monitor = wallet_monitor.with_gas_price_manager(Arc::clone(gas_price_manager));
+    }
     tokio::spawn(async move {
         wallet_monitor.start().await;
     });

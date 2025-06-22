@@ -4,6 +4,7 @@ use super::json_extractor::JsonExtractor;
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::database::models::NewFeedLog;
 use crate::database::{FeedLogRepository, TransactionLogRepository};
+use crate::gas_price::GasPriceManager;
 use crate::metrics::{FeedMetrics, UpdateMetrics, QualityMetrics};
 use crate::network::NetworkManager;
 use anyhow::Result;
@@ -20,6 +21,7 @@ pub struct FeedMonitor {
     config: OmikujiConfig,
     repository: Option<Arc<FeedLogRepository>>,
     tx_log_repo: Option<Arc<TransactionLogRepository>>,
+    gas_price_manager: Option<Arc<GasPriceManager>>,
     last_value: Option<f64>,
     last_check_time: Option<Instant>,
 }
@@ -41,9 +43,16 @@ impl FeedMonitor {
             config,
             repository,
             tx_log_repo,
+            gas_price_manager: None,
             last_value: None,
             last_check_time: None,
         }
+    }
+
+    /// Sets the gas price manager for USD cost tracking
+    pub fn with_gas_price_manager(mut self, gas_price_manager: Arc<GasPriceManager>) -> Self {
+        self.gas_price_manager = Some(gas_price_manager);
+        self
     }
 
     /// Starts monitoring the datafeed
@@ -222,11 +231,16 @@ impl FeedMonitor {
 
     /// Checks if contract update is needed and submits if necessary
     async fn check_and_update_contract(&self, value: f64) -> Result<()> {
-        let updater = if let Some(ref tx_repo) = self.tx_log_repo {
+        let mut updater = if let Some(ref tx_repo) = self.tx_log_repo {
             ContractUpdater::with_tx_logging(&self.network_manager, &self.config, tx_repo.clone())
         } else {
             ContractUpdater::new(&self.network_manager, &self.config)
         };
+
+        // Add gas price manager if available
+        if let Some(ref gas_price_manager) = self.gas_price_manager {
+            updater = updater.with_gas_price_manager(gas_price_manager);
+        }
 
         // Check if update is needed
         let (should_update, reason) = updater.check_update_needed(&self.datafeed, value).await?;

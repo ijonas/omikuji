@@ -17,6 +17,7 @@ use super::contract_utils::{
 use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::contracts::FluxAggregatorContract;
 use crate::database::TransactionLogRepository;
+use crate::gas_price::GasPriceManager;
 use crate::metrics::{FeedMetrics, UpdateMetrics, UpdateReason, SkipReason};
 use crate::network::NetworkManager;
 
@@ -25,6 +26,7 @@ pub struct ContractUpdater<'a> {
     network_manager: &'a Arc<NetworkManager>,
     config: &'a OmikujiConfig,
     tx_log_repo: Option<Arc<TransactionLogRepository>>,
+    gas_price_manager: Option<&'a Arc<GasPriceManager>>,
 }
 
 impl<'a> ContractUpdater<'a> {
@@ -34,6 +36,7 @@ impl<'a> ContractUpdater<'a> {
             network_manager,
             config,
             tx_log_repo: None,
+            gas_price_manager: None,
         }
     }
 
@@ -47,7 +50,14 @@ impl<'a> ContractUpdater<'a> {
             network_manager,
             config,
             tx_log_repo: Some(tx_log_repo),
+            gas_price_manager: None,
         }
+    }
+
+    /// Sets the gas price manager
+    pub fn with_gas_price_manager(mut self, gas_price_manager: &'a Arc<GasPriceManager>) -> Self {
+        self.gas_price_manager = Some(gas_price_manager);
+        self
     }
 
     /// Gets the network configuration for a datafeed
@@ -341,6 +351,42 @@ impl<'a> ContractUpdater<'a> {
 
                 // Record contract update in metrics
                 FeedMetrics::record_contract_update(&datafeed.name, &datafeed.networks);
+
+                // Calculate and record USD cost if gas price manager is available
+                if let Some(gas_price_manager) = self.gas_price_manager {
+                    let gas_used = receipt.gas_used;
+                    let effective_gas_price = receipt.effective_gas_price;
+                    let tx_hash = format!("0x{:x}", receipt.transaction_hash);
+                    
+                    if let Some(gas_cost_usd) = gas_price_manager
+                        .calculate_usd_cost(
+                            &datafeed.networks,
+                            &datafeed.name,
+                            &tx_hash,
+                            gas_used as u64,
+                            effective_gas_price as u128,
+                        )
+                        .await
+                    {
+                        // Record USD cost metrics
+                        use crate::metrics::gas_metrics::GasMetrics;
+                        GasMetrics::record_usd_cost(
+                            &datafeed.name,
+                            &datafeed.networks,
+                            gas_used as u64,
+                            effective_gas_price as u128,
+                            gas_cost_usd.gas_token_price_usd,
+                        );
+                        
+                        info!(
+                            "Transaction cost: ${:.6} USD (gas: {}, price: {} wei, token: ${:.2})",
+                            gas_cost_usd.total_cost_usd,
+                            gas_used,
+                            effective_gas_price,
+                            gas_cost_usd.gas_token_price_usd
+                        );
+                    }
+                }
 
                 Ok(())
             }

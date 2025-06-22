@@ -1,3 +1,4 @@
+use crate::gas_price::GasPriceManager;
 use crate::metrics::{FeedMetrics, EconomicMetrics};
 use crate::network::NetworkManager;
 use alloy::primitives::utils::format_units;
@@ -9,6 +10,7 @@ use tracing::{debug, error, info};
 /// Monitors wallet balances across all networks
 pub struct WalletBalanceMonitor {
     network_manager: Arc<NetworkManager>,
+    gas_price_manager: Option<Arc<GasPriceManager>>,
     update_interval_seconds: u64,
     /// Track daily spending for runway calculation (network -> daily spend in USD)
     daily_spending_estimates: HashMap<String, f64>,
@@ -19,9 +21,16 @@ impl WalletBalanceMonitor {
     pub fn new(network_manager: Arc<NetworkManager>) -> Self {
         Self {
             network_manager,
+            gas_price_manager: None,
             update_interval_seconds: 60, // Default to 1 minute
             daily_spending_estimates: HashMap::new(),
         }
+    }
+    
+    /// Set the gas price manager
+    pub fn with_gas_price_manager(mut self, gas_price_manager: Arc<GasPriceManager>) -> Self {
+        self.gas_price_manager = Some(gas_price_manager);
+        self
     }
 
     /// Start monitoring wallet balances
@@ -79,8 +88,16 @@ impl WalletBalanceMonitor {
                     balance_wei,
                 );
 
-                // Get native token price (simplified - in production this would come from a price feed)
-                let native_token_price = self.get_native_token_price(network_name);
+                // Get native token price from gas price manager if available
+                let native_token_price = if let Some(ref gas_price_manager) = self.gas_price_manager {
+                    if let Some(price_info) = gas_price_manager.get_price(network_name).await {
+                        price_info.price_usd
+                    } else {
+                        1.0 // Default if price not available
+                    }
+                } else {
+                    1.0 // Default price if no gas price manager
+                };
                 
                 // Update economic metrics
                 EconomicMetrics::update_wallet_balance_usd(
@@ -121,22 +138,6 @@ impl WalletBalanceMonitor {
                 );
                 Err(Box::new(e))
             }
-        }
-    }
-    
-    /// Get native token price for a network (simplified - in production this would come from a price feed)
-    fn get_native_token_price(&self, network_name: &str) -> f64 {
-        // Simplified price mapping - in production this would query an actual price feed
-        match network_name.to_lowercase().as_str() {
-            name if name.contains("mainnet") || name.contains("ethereum") => 2500.0, // ETH price
-            name if name.contains("polygon") || name.contains("matic") => 0.70,     // MATIC price
-            name if name.contains("arbitrum") => 2500.0,                            // ETH on L2
-            name if name.contains("optimism") => 2500.0,                            // ETH on L2
-            name if name.contains("base") => 2500.0,                                // ETH on L2
-            name if name.contains("bsc") || name.contains("binance") => 350.0,      // BNB price
-            name if name.contains("avalanche") || name.contains("avax") => 25.0,    // AVAX price
-            name if name.contains("fantom") => 0.40,                                // FTM price
-            _ => 1.0, // Default for unknown/test networks
         }
     }
 }
