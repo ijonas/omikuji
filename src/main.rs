@@ -215,6 +215,8 @@ async fn main() -> Result<()> {
         let network_manager_for_metrics = network_manager.clone();
         let config_for_metrics = config.clone();
         tokio::spawn(async move {
+            let mut last_update_total = 0;
+            let mut last_update_time = std::time::Instant::now();
             loop {
                 // Update network status
                 let mut networks = Vec::new();
@@ -230,9 +232,39 @@ async fn main() -> Result<()> {
                         wallet_status: "OK".to_string(),
                     });
                 }
+                // --- Extract values before mutable borrow ---
+                let (last_tx_cost, avg_staleness_secs, update_success_count, update_total_count) = {
+                    let dash = dash_for_metrics.read().await;
+                    (
+                        dash.metrics.last_tx_cost,
+                        dash.metrics.avg_staleness_secs,
+                        dash.metrics.update_success_count,
+                        dash.metrics.update_total_count,
+                    )
+                };
                 {
                     let mut dash = dash_for_metrics.write().await;
                     dash.networks = networks;
+                    // --- Push new values to live sparklines ---
+                    // Tx cost
+                    if let Some(cost) = last_tx_cost {
+                        dash.tx_cost_hist.push(cost);
+                    }
+                    // Staleness
+                    dash.staleness_hist.push(avg_staleness_secs);
+                    // Error rate
+                    let error_rate = if update_total_count > 0 {
+                        1.0 - (update_success_count as f64 / update_total_count as f64)
+                    } else { 0.0 };
+                    dash.error_rate_hist.push(error_rate);
+                    // Update frequency (updates per minute)
+                    let now = std::time::Instant::now();
+                    let dt = now.duration_since(last_update_time).as_secs_f64();
+                    let update_delta = update_total_count.saturating_sub(last_update_total);
+                    let freq = if dt > 0.0 { (update_delta as f64 / dt) * 60.0 } else { 0.0 };
+                    dash.update_freq_hist.push(freq.round() as u64);
+                    last_update_total = update_total_count;
+                    last_update_time = now;
                 }
                 // Update staleness and error counts
                 update::update_avg_staleness(&dash_for_metrics).await;
@@ -447,6 +479,8 @@ async fn main() -> Result<()> {
         let network_manager_for_metrics = network_manager.clone();
         let config_for_metrics = config.clone();
         tokio::spawn(async move {
+            let mut last_update_total = 0;
+            let mut last_update_time = std::time::Instant::now();
             loop {
                 // Update network status
                 let mut networks = Vec::new();
@@ -462,9 +496,39 @@ async fn main() -> Result<()> {
                         wallet_status: "OK".to_string(),
                     });
                 }
+                // --- Extract values before mutable borrow ---
+                let (last_tx_cost, avg_staleness_secs, update_success_count, update_total_count) = {
+                    let dash = dash_for_metrics.read().await;
+                    (
+                        dash.metrics.last_tx_cost,
+                        dash.metrics.avg_staleness_secs,
+                        dash.metrics.update_success_count,
+                        dash.metrics.update_total_count,
+                    )
+                };
                 {
                     let mut dash = dash_for_metrics.write().await;
                     dash.networks = networks;
+                    // --- Push new values to live sparklines ---
+                    // Tx cost
+                    if let Some(cost) = last_tx_cost {
+                        dash.tx_cost_hist.push(cost);
+                    }
+                    // Staleness
+                    dash.staleness_hist.push(avg_staleness_secs);
+                    // Error rate
+                    let error_rate = if update_total_count > 0 {
+                        1.0 - (update_success_count as f64 / update_total_count as f64)
+                    } else { 0.0 };
+                    dash.error_rate_hist.push(error_rate);
+                    // Update frequency (updates per minute)
+                    let now = std::time::Instant::now();
+                    let dt = now.duration_since(last_update_time).as_secs_f64();
+                    let update_delta = update_total_count.saturating_sub(last_update_total);
+                    let freq = if dt > 0.0 { (update_delta as f64 / dt) * 60.0 } else { 0.0 };
+                    dash.update_freq_hist.push(freq.round() as u64);
+                    last_update_total = update_total_count;
+                    last_update_time = now;
                 }
                 // Update staleness and error counts
                 update::update_avg_staleness(&dash_for_metrics).await;

@@ -94,6 +94,11 @@ pub struct DashboardState {
     pub show_help: bool,
     pub gas_price_gwei_hist: Ring<120, f64>,
     pub response_time_ms_hist: Ring<120, u64>,
+    // --- New: Live panel sparklines ---
+    pub tx_cost_hist: Ring<120, f64>,
+    pub staleness_hist: Ring<120, f64>,
+    pub error_rate_hist: Ring<120, f64>,
+    pub update_freq_hist: Ring<120, u64>,
     // pub theme: Theme, // Uncomment if theming is implemented
 }
 
@@ -652,60 +657,58 @@ fn render_overview(f: &mut Frame, area: Rect, dash: &DashboardState) {
 
 // --- Live Panel Renderer ---
 fn render_panel_live(f: &mut Frame, area: Rect, dash: &DashboardState) {
-    use ratatui::widgets::{Sparkline, Gauge, Block, Borders};
+    use ratatui::widgets::{Sparkline, Block, Borders};
     use ratatui::layout::{Layout, Constraint, Direction};
     use ratatui::style::{Style, Color, Modifier};
     use ratatui::text::Span;
-    // New layout: vertical split, top 50% for charts, bottom 50% for gauges
-    let chunks = Layout::default()
+    // New layout: 2x2 grid for 4 sparklines
+    let grid = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(50), // Top: charts
-            Constraint::Percentage(50), // Bottom: gauges
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
         ])
         .split(area);
-    // Top: horizontal split for charts
-    let chart_chunks = Layout::default()
+    let top_row = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[0]);
-    // Gas price sparkline
-    let gas_hist = dash.gas_price_gwei_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
-    let spark_gas = Sparkline::default()
-        .block(Block::default().borders(Borders::ALL).title(Span::styled("Gas Price (Gwei)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
-        .data(&gas_hist)
+        .split(grid[0]);
+    let bottom_row = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(grid[1]);
+    // Transaction Cost Sparkline
+    let tx_cost_hist = dash.tx_cost_hist.as_vec().iter().map(|v| (*v * 1_000_000.0) as u64).collect::<Vec<u64>>();
+    let spark_tx_cost = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Tx Cost (μETH)", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&tx_cost_hist)
+        .style(Style::default().fg(Color::Yellow).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
+    f.render_widget(spark_tx_cost, top_row[0]);
+    // Staleness Sparkline
+    let staleness_hist = dash.staleness_hist.as_vec().iter().map(|v| *v as u64).collect::<Vec<u64>>();
+    let spark_stale = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Staleness (s)", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&staleness_hist)
+        .style(Style::default().fg(Color::Cyan).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
+    f.render_widget(spark_stale, top_row[1]);
+    // Error Rate Sparkline
+    let error_rate_hist = dash.error_rate_hist.as_vec().iter().map(|v| (*v * 100.0) as u64).collect::<Vec<u64>>();
+    let spark_error = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Error Rate (%)", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&error_rate_hist)
+        .style(Style::default().fg(Color::Red).bg(Color::Black))
+        .bar_set(bar::NINE_LEVELS);
+    f.render_widget(spark_error, bottom_row[0]);
+    // Update Frequency Sparkline
+    let update_freq_hist = dash.update_freq_hist.as_vec();
+    let spark_update = Sparkline::default()
+        .block(Block::default().borders(Borders::ALL).title(Span::styled("Update Freq (min⁻¹)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
+        .data(&update_freq_hist)
         .style(Style::default().fg(Color::Green).bg(Color::Black))
         .bar_set(bar::NINE_LEVELS);
-    f.render_widget(spark_gas, chart_chunks[0]);
-    // Response time sparkline
-    let resp_hist = dash.response_time_ms_hist.as_vec();
-    let spark_resp = Sparkline::default()
-        .block(Block::default().borders(Borders::ALL).title(Span::styled("Response Time (ms)", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))).style(Style::default().bg(Color::Black)))
-        .data(&resp_hist)
-        .style(Style::default().fg(Color::Blue).bg(Color::Black))
-        .bar_set(bar::NINE_LEVELS);
-    f.render_widget(spark_resp, chart_chunks[1]);
-    // Bottom: vertical split for gauges (each gets 50% of bottom area)
-    let gauge_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[1]);
-    // Use real metrics from dash.metrics
-    let success = dash.metrics.update_success_count as u16;
-    let total = dash.metrics.update_total_count as u16;
-    let staleness = dash.metrics.avg_staleness_secs;
-    let gauge_success = Gauge::default()
-        .block(Block::default().title(Span::styled("Update Success Ratio", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))).borders(Borders::ALL).style(Style::default().bg(Color::Black)))
-        .gauge_style(Style::default().fg(Color::Magenta).bg(Color::Black).add_modifier(Modifier::BOLD))
-        .ratio(if total > 0 { success as f64 / total as f64 } else { 0.0 })
-        .label(format!("{:.1}% ({}/{})", if total > 0 { 100.0 * (success as f64 / total as f64) } else { 0.0 }, success, total));
-    let gauge_stale = Gauge::default()
-        .block(Block::default().title(Span::styled("Avg Staleness", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))).borders(Borders::ALL).style(Style::default().bg(Color::Black)))
-        .gauge_style(Style::default().fg(if staleness > 300.0 { Color::Red } else { Color::Cyan }).bg(Color::Black))
-        .ratio((staleness.min(600.0)) / 600.0)
-        .label(format!("{:.1} s", staleness));
-    f.render_widget(gauge_success, gauge_chunks[0]);
-    f.render_widget(gauge_stale, gauge_chunks[1]);
+    f.render_widget(spark_update, bottom_row[1]);
 }
 
 // --- Feeds Panel Renderer ---
