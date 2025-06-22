@@ -661,14 +661,22 @@ fn render_panel_live(f: &mut Frame, area: Rect, dash: &DashboardState) {
     use ratatui::layout::{Layout, Constraint, Direction};
     use ratatui::style::{Style, Color, Modifier};
     use ratatui::text::Span;
-    // New layout: 2x2 grid for 4 sparklines
+    // Split area: top for sparklines, bottom for network table
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(area.height.saturating_mul(2) / 3), // 2/3 for sparklines
+            Constraint::Min(7), // at least 7 rows for network table
+        ])
+        .split(area);
+    // 2x2 grid for sparklines in the top chunk
     let grid = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Percentage(50),
             Constraint::Percentage(50),
         ])
-        .split(area);
+        .split(chunks[0]);
     let top_row = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -709,6 +717,8 @@ fn render_panel_live(f: &mut Frame, area: Rect, dash: &DashboardState) {
         .style(Style::default().fg(Color::Green).bg(Color::Black))
         .bar_set(bar::NINE_LEVELS);
     f.render_widget(spark_update, bottom_row[1]);
+    // Network table in the bottom chunk
+    render_network(f, chunks[1], dash);
 }
 
 // --- Feeds Panel Renderer ---
