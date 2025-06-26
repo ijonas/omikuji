@@ -2,6 +2,9 @@ use alloy::primitives::I256;
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 
+use super::metrics_config::MetricsConfig;
+use crate::gas_price::models::GasPriceFeedConfig;
+
 /// The main configuration structure for Omikuji
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct OmikujiConfig {
@@ -22,6 +25,14 @@ pub struct OmikujiConfig {
     #[serde(default)]
     #[validate]
     pub key_storage: KeyStorageConfig,
+
+    /// Metrics configuration
+    #[serde(default)]
+    pub metrics: MetricsConfig,
+
+    /// Gas price feed configuration
+    #[serde(default)]
+    pub gas_price_feeds: GasPriceFeedConfig,
 }
 
 /// Configuration for database cleanup task
@@ -124,6 +135,14 @@ pub struct Network {
     #[serde(default)]
     #[validate]
     pub gas_config: GasConfig,
+
+    /// Gas token ID for price feeds (e.g., "ethereum" for CoinGecko)
+    #[serde(default = "default_gas_token")]
+    pub gas_token: String,
+
+    /// Gas token symbol (e.g., "ETH", "BNB")
+    #[serde(default = "default_gas_token_symbol")]
+    pub gas_token_symbol: String,
 }
 
 /// Gas configuration for a network
@@ -177,6 +196,14 @@ pub struct FeeBumpingConfig {
 
 fn default_transaction_type() -> String {
     "eip1559".to_string()
+}
+
+fn default_gas_token() -> String {
+    "ethereum".to_string()
+}
+
+fn default_gas_token_symbol() -> String {
+    "ETH".to_string()
 }
 
 fn default_gas_multiplier() -> f64 {

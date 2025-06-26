@@ -2840,6 +2840,7 @@ dependencies = [
  "keyring",
  "lazy_static",
  "mockito",
+ "once_cell",
  "prometheus",
  "prometheus-hyper",
  "rand 0.8.5",

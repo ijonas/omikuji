@@ -1,0 +1,93 @@
+# Example Omikuji configuration with gas price feed support
+
+# Gas price feed configuration for USD cost tracking
+gas_price_feeds:
+  enabled: true
+  update_frequency: 3600  # Update prices every hour
+  provider: "coingecko"   # Currently only coingecko is supported
+  cache_ttl: 600          # Cache prices for 10 minutes
+  fallback_to_cache: true # Use cached prices if API fails
+  persist_to_database: true # Store price history in database
+  
+  # CoinGecko configuration
+  coingecko:
+    # Optional: Add API key for higher rate limits (Pro tier)
+    # api_key: "${COINGECKO_API_KEY}"
+    # base_url: "https://pro-api.coingecko.com/api/v3"  # Pro API endpoint
+
+# Network configurations with gas token mappings
+networks:
+  - name: "ethereum-mainnet"
+    rpc_url: "${ETH_RPC_URL}"
+    transaction_type: "eip1559"
+    gas_token: "ethereum"        # CoinGecko ID for ETH
+    gas_token_symbol: "ETH"      # Display symbol
+    gas_config:
+      gas_multiplier: 1.2
+      fee_bumping:
+        enabled: true
+        max_retries: 3
+        initial_wait_seconds: 30
+        fee_increase_percent: 10.0
+
+  - name: "base-mainnet"
+    rpc_url: "${BASE_RPC_URL}"
+    transaction_type: "eip1559"
+    gas_token: "ethereum"        # Base uses ETH for gas
+    gas_token_symbol: "ETH"
+    gas_config:
+      gas_multiplier: 1.2
+
+  - name: "bnb-smart-chain"
+    rpc_url: "${BSC_RPC_URL}"
+    transaction_type: "legacy"
+    gas_token: "binancecoin"     # CoinGecko ID for BNB
+    gas_token_symbol: "BNB"
+    gas_config:
+      gas_price_gwei: 3.0        # Fixed gas price for BSC
+
+  - name: "polygon"
+    rpc_url: "${POLYGON_RPC_URL}"
+    transaction_type: "eip1559"
+    gas_token: "matic-network"   # CoinGecko ID for MATIC
+    gas_token_symbol: "MATIC"
+    gas_config:
+      gas_multiplier: 1.5        # Higher multiplier for Polygon
+
+# Example datafeeds
+datafeeds:
+  - name: "ETH/USD"
+    networks: "ethereum-mainnet"
+    check_frequency: 60
+    contract_address: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+    contract_type: "fluxmon"
+    read_contract_config: true
+    minimum_update_frequency: 3600
+    deviation_threshold_pct: 0.5
+    feed_url: "https://api.example.com/prices/eth-usd"
+    feed_json_path: "$.price"
+    feed_json_path_timestamp: "$.timestamp"
+
+  - name: "BTC/USD on Base"
+    networks: "base-mainnet"
+    check_frequency: 120
+    contract_address: "0x1234567890123456789012345678901234567890"
+    contract_type: "fluxmon"
+    read_contract_config: false
+    minimum_update_frequency: 7200
+    deviation_threshold_pct: 1.0
+    feed_url: "https://api.example.com/prices/btc-usd"
+    feed_json_path: "$.data.btc.usd"
+    decimals: 8
+    min_value: 10000
+    max_value: 1000000
+
+# Database configuration (required for price history)
+# Set DATABASE_URL environment variable:
+# DATABASE_URL=postgresql://user:password@localhost/omikuji
+
+# Metrics will include USD cost tracking:
+# - omikuji_gas_token_price_usd
+# - omikuji_cumulative_gas_cost_usd
+# - omikuji_hourly_gas_cost_usd
+# - omikuji_daily_gas_cost_usd

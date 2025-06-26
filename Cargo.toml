@@ -54,6 +54,7 @@ tokio-cron-scheduler = "0.9"
 
 # Utilities
 lazy_static = "1.4"
+once_cell = "1.19"
 
 # Key storage
 keyring = "3.0"
