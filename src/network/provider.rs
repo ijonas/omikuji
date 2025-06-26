@@ -124,19 +124,43 @@ impl NetworkManager {
         key_storage: &dyn KeyStorage,
     ) -> Result<()> {
         info!(
-            "Loading wallet from key storage for network {}",
+            "[PROVIDER DEBUG] Loading wallet from key storage for network {}",
             network_name
         );
 
         // Check if the network exists
         if !self.providers.contains_key(network_name) {
+            error!(
+                "[PROVIDER DEBUG] Network '{}' not found in providers map",
+                network_name
+            );
+            error!(
+                "[PROVIDER DEBUG] Available networks: {:?}",
+                self.providers.keys().collect::<Vec<_>>()
+            );
             return Err(NetworkError::NetworkNotFound(network_name.to_string()).into());
         }
 
-        let private_key_secret = key_storage
-            .get_key(network_name)
-            .await
-            .with_context(|| format!("Failed to retrieve key for network {}", network_name))?;
+        info!(
+            "[PROVIDER DEBUG] Network '{}' found, attempting to retrieve key from storage",
+            network_name
+        );
+        let private_key_secret = match key_storage.get_key(network_name).await {
+            Ok(key) => {
+                info!("[PROVIDER DEBUG] Successfully retrieved key from storage");
+                key
+            }
+            Err(e) => {
+                error!(
+                    "[PROVIDER DEBUG] Failed to retrieve key from storage: {:?}",
+                    e
+                );
+                return Err(e.context(format!(
+                    "Failed to retrieve key for network {}",
+                    network_name
+                )));
+            }
+        };
 
         let private_key = private_key_secret.expose_secret();
 

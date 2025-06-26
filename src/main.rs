@@ -104,7 +104,12 @@ async fn main() -> Result<()> {
 
     let key_storage: Box<dyn KeyStorage> = match config.key_storage.storage_type.as_str() {
         "keyring" => {
-            info!("Using OS keyring for key storage");
+            info!("[MAIN DEBUG] Using OS keyring for key storage");
+            info!(
+                "[MAIN DEBUG] Keyring service name: '{}'",
+                config.key_storage.keyring.service
+            );
+            info!("[MAIN DEBUG] Creating KeyringStorage instance");
             Box::new(KeyringStorage::new(Some(
                 config.key_storage.keyring.service.clone(),
             )))
@@ -123,36 +128,57 @@ async fn main() -> Result<()> {
     };
 
     for network in &config.networks {
+        info!(
+            "[MAIN DEBUG] Attempting to load wallet for network: {}",
+            network.name
+        );
         match network_manager
             .load_wallet_from_key_storage(&network.name, key_storage.as_ref())
             .await
         {
             Ok(_) => {
-                info!("Loaded wallet for network {}", network.name);
+                info!(
+                    "[MAIN DEBUG] Successfully loaded wallet for network {}",
+                    network.name
+                );
             }
             Err(e) => {
+                error!(
+                    "[MAIN DEBUG] Failed to load wallet from key storage for network {}: {:?}",
+                    network.name, e
+                );
+
                 // For backward compatibility, try environment variable if keyring fails
                 if config.key_storage.storage_type == "keyring" {
                     info!(
-                        "Keyring lookup failed for network {}, trying environment variable",
+                        "[MAIN DEBUG] Keyring lookup failed for network {}, trying environment variable",
                         network.name
                     );
-                    if network_manager
+                    info!("[MAIN DEBUG] Looking for env var: {}", cli.private_key_env);
+
+                    match network_manager
                         .load_wallet_from_env(&network.name, &cli.private_key_env)
                         .await
-                        .is_ok()
                     {
-                        info!(
-                            "Loaded wallet for network {} from environment variable",
-                            network.name
-                        );
-                        continue;
+                        Ok(_) => {
+                            info!(
+                                "[MAIN DEBUG] Successfully loaded wallet for network {} from environment variable",
+                                network.name
+                            );
+                            continue;
+                        }
+                        Err(env_err) => {
+                            error!("[MAIN DEBUG] Failed to load from env var: {:?}", env_err);
+                        }
                     }
                 }
 
-                error!("Failed to load wallet for network {}: {}", network.name, e);
                 error!(
-                    "Transactions on {} network will not be possible",
+                    "[MAIN DEBUG] Final error - Failed to load wallet for network {}: {}",
+                    network.name, e
+                );
+                error!(
+                    "[MAIN DEBUG] Transactions on {} network will not be possible",
                     network.name
                 );
             }
