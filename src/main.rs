@@ -71,9 +71,9 @@ async fn main() -> Result<()> {
     };
 
     // Initialize metrics configuration
-    use crate::metrics::{ConfigMetrics, init_metrics_config};
+    use crate::metrics::{init_metrics_config, ConfigMetrics};
     init_metrics_config(config.metrics.clone());
-    
+
     // Record configuration metrics
     ConfigMetrics::record_startup_info(&config);
 
@@ -112,7 +112,12 @@ async fn main() -> Result<()> {
 
     let key_storage: Box<dyn KeyStorage> = match config.key_storage.storage_type.as_str() {
         "keyring" => {
-            info!("Using OS keyring for key storage");
+            info!("[MAIN DEBUG] Using OS keyring for key storage");
+            info!(
+                "[MAIN DEBUG] Keyring service name: '{}'",
+                config.key_storage.keyring.service
+            );
+            info!("[MAIN DEBUG] Creating KeyringStorage instance");
             Box::new(KeyringStorage::new(Some(
                 config.key_storage.keyring.service.clone(),
             )))
@@ -131,36 +136,57 @@ async fn main() -> Result<()> {
     };
 
     for network in &config.networks {
+        info!(
+            "[MAIN DEBUG] Attempting to load wallet for network: {}",
+            network.name
+        );
         match network_manager
             .load_wallet_from_key_storage(&network.name, key_storage.as_ref())
             .await
         {
             Ok(_) => {
-                info!("Loaded wallet for network {}", network.name);
+                info!(
+                    "[MAIN DEBUG] Successfully loaded wallet for network {}",
+                    network.name
+                );
             }
             Err(e) => {
+                error!(
+                    "[MAIN DEBUG] Failed to load wallet from key storage for network {}: {:?}",
+                    network.name, e
+                );
+
                 // For backward compatibility, try environment variable if keyring fails
                 if config.key_storage.storage_type == "keyring" {
                     info!(
-                        "Keyring lookup failed for network {}, trying environment variable",
+                        "[MAIN DEBUG] Keyring lookup failed for network {}, trying environment variable",
                         network.name
                     );
-                    if network_manager
+                    info!("[MAIN DEBUG] Looking for env var: {}", cli.private_key_env);
+
+                    match network_manager
                         .load_wallet_from_env(&network.name, &cli.private_key_env)
                         .await
-                        .is_ok()
                     {
-                        info!(
-                            "Loaded wallet for network {} from environment variable",
-                            network.name
-                        );
-                        continue;
+                        Ok(_) => {
+                            info!(
+                                "[MAIN DEBUG] Successfully loaded wallet for network {} from environment variable",
+                                network.name
+                            );
+                            continue;
+                        }
+                        Err(env_err) => {
+                            error!("[MAIN DEBUG] Failed to load from env var: {:?}", env_err);
+                        }
                     }
                 }
 
-                error!("Failed to load wallet for network {}: {}", network.name, e);
                 error!(
-                    "Transactions on {} network will not be possible",
+                    "[MAIN DEBUG] Final error - Failed to load wallet for network {}: {}",
+                    network.name, e
+                );
+                error!(
+                    "[MAIN DEBUG] Transactions on {} network will not be possible",
                     network.name
                 );
             }
@@ -226,27 +252,27 @@ async fn main() -> Result<()> {
     // Initialize gas price manager
     let gas_price_manager = if config.gas_price_feeds.enabled {
         info!("Initializing gas price feed manager");
-        
+
         // Build token mappings from network configurations
         let mut token_mappings = std::collections::HashMap::new();
         for network in &config.networks {
             token_mappings.insert(network.name.clone(), network.gas_token.clone());
         }
-        
+
         // Create transaction repository if database is available
         let tx_repo = database_pool.as_ref().map(|pool| {
             Arc::new(database::transaction_repository::TransactionLogRepository::new(pool.clone()))
         });
-        
+
         let gas_price_manager = Arc::new(gas_price::GasPriceManager::new(
             config.gas_price_feeds.clone(),
             token_mappings,
             tx_repo,
         ));
-        
+
         // Start the price update loop
         gas_price_manager.clone().start().await;
-        
+
         Some(gas_price_manager)
     } else {
         info!("Gas price feeds are disabled");
@@ -257,21 +283,21 @@ async fn main() -> Result<()> {
     let mut feed_manager = if let Some(pool) = database_pool {
         let mut manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
             .with_repository(pool);
-        
+
         // Add gas price manager if available
         if let Some(ref gas_price_manager) = gas_price_manager {
             manager = manager.with_gas_price_manager(Arc::clone(gas_price_manager));
         }
-        
+
         manager
     } else {
         let mut manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager));
-        
+
         // Add gas price manager if available
         if let Some(ref gas_price_manager) = gas_price_manager {
             manager = manager.with_gas_price_manager(Arc::clone(gas_price_manager));
         }
-        
+
         manager
     };
 
@@ -283,7 +309,7 @@ async fn main() -> Result<()> {
         error!("Continuing without metrics endpoint");
     } else {
         info!("Prometheus metrics available at http://0.0.0.0:9090/metrics");
-        
+
         // Update metrics server status
         ConfigMetrics::set_metrics_server_status(true, 9090);
     }

@@ -28,20 +28,23 @@ impl GasPriceManager {
         db_repo: Option<Arc<TransactionLogRepository>>,
     ) -> Self {
         let cache = Arc::new(PriceCache::new(config.cache_ttl));
-        
+
         let mut providers: Vec<Box<dyn PriceProvider>> = Vec::new();
-        
+
         // Initialize providers based on config
         match config.provider.as_str() {
             "coingecko" => {
                 providers.push(Box::new(CoinGeckoProvider::new(config.coingecko.clone())));
             }
             _ => {
-                warn!("Unknown price provider: {}, using coingecko", config.provider);
+                warn!(
+                    "Unknown price provider: {}, using coingecko",
+                    config.provider
+                );
                 providers.push(Box::new(CoinGeckoProvider::new(config.coingecko.clone())));
             }
         }
-        
+
         Self {
             config,
             providers,
@@ -215,16 +218,17 @@ impl GasPriceManager {
     /// Update Prometheus metrics
     async fn update_metrics(&self, prices: &[GasTokenPrice]) {
         use crate::metrics::gas_metrics::GAS_TOKEN_PRICE_USD;
-        
+
         let mappings = self.token_mappings.read().await;
-        let reverse_mappings: HashMap<&str, Vec<&str>> = mappings
-            .iter()
-            .fold(HashMap::new(), |mut acc, (network, token_id)| {
-                acc.entry(token_id.as_str())
-                    .or_insert_with(Vec::new)
-                    .push(network.as_str());
-                acc
-            });
+        let reverse_mappings: HashMap<&str, Vec<&str>> =
+            mappings
+                .iter()
+                .fold(HashMap::new(), |mut acc, (network, token_id)| {
+                    acc.entry(token_id.as_str())
+                        .or_default()
+                        .push(network.as_str());
+                    acc
+                });
 
         for price in prices {
             if let Some(networks) = reverse_mappings.get(price.token_id.as_str()) {

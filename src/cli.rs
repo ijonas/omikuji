@@ -113,24 +113,72 @@ async fn import_key(
     file: Option<PathBuf>,
     service: Option<String>,
 ) -> Result<()> {
-    let storage = KeyringStorage::new(service);
+    use tracing::{error, info};
+
+    info!("[CLI DEBUG] Starting key import for network: '{}'", network);
+    info!("[CLI DEBUG] Service name: {:?}", service);
+
+    let storage = KeyringStorage::new(service.clone());
+    info!(
+        "[CLI DEBUG] Created KeyringStorage with service: {:?}",
+        service.or(Some("omikuji".to_string()))
+    );
 
     let private_key = match (key, file) {
-        (Some(k), _) => SecretString::from(k),
+        (Some(k), _) => {
+            info!(
+                "[CLI DEBUG] Using key provided via command line (length: {})",
+                k.len()
+            );
+            SecretString::from(k)
+        }
         (None, Some(path)) => {
+            info!("[CLI DEBUG] Reading key from file: {:?}", path);
             let content = std::fs::read_to_string(path)?;
+            info!(
+                "[CLI DEBUG] Read key from file (length: {})",
+                content.trim().len()
+            );
             SecretString::from(content.trim().to_string())
         }
         (None, None) => {
             // Prompt for key input
             println!("Enter private key for network '{}': ", network);
             let key = rpassword::prompt_password("")?;
+            info!("[CLI DEBUG] Read key from prompt (length: {})", key.len());
             SecretString::from(key)
         }
     };
 
-    storage.store_key(&network, private_key).await?;
-    println!("Successfully imported key for network '{}'", network);
+    info!("[CLI DEBUG] Attempting to store key in keyring");
+    match storage.store_key(&network, private_key).await {
+        Ok(_) => {
+            info!("[CLI DEBUG] Successfully stored key in keyring");
+            println!("Successfully imported key for network '{}'", network);
+
+            // Verify the key was stored
+            info!("[CLI DEBUG] Verifying stored key");
+            match storage.get_key(&network).await {
+                Ok(_) => {
+                    info!("[CLI DEBUG] Verification successful - key can be retrieved");
+                }
+                Err(e) => {
+                    error!(
+                        "[CLI DEBUG] Verification failed - cannot retrieve key: {:?}",
+                        e
+                    );
+                    println!(
+                        "WARNING: Key was stored but verification failed. Error: {}",
+                        e
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            error!("[CLI DEBUG] Failed to store key: {:?}", e);
+            return Err(e);
+        }
+    }
 
     Ok(())
 }
@@ -170,7 +218,16 @@ async fn remove_key(network: String, service: Option<String>) -> Result<()> {
 }
 
 async fn export_key(network: String, service: Option<String>) -> Result<()> {
-    let storage = KeyringStorage::new(service);
+    use tracing::{error, info};
+
+    info!("[CLI DEBUG] Starting key export for network: '{}'", network);
+    info!("[CLI DEBUG] Service name: {:?}", service);
+
+    let storage = KeyringStorage::new(service.clone());
+    info!(
+        "[CLI DEBUG] Created KeyringStorage with service: {:?}",
+        service.or(Some("omikuji".to_string()))
+    );
 
     // Confirm export
     println!("WARNING: This will display your private key!");
@@ -186,12 +243,21 @@ async fn export_key(network: String, service: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let key = storage.get_key(&network).await?;
-    println!(
-        "Private key for network '{}': {}",
-        network,
-        secrecy::ExposeSecret::expose_secret(&key)
-    );
+    info!("[CLI DEBUG] Attempting to retrieve key from keyring");
+    match storage.get_key(&network).await {
+        Ok(key) => {
+            info!("[CLI DEBUG] Successfully retrieved key from keyring");
+            println!(
+                "Private key for network '{}': {}",
+                network,
+                secrecy::ExposeSecret::expose_secret(&key)
+            );
+        }
+        Err(e) => {
+            error!("[CLI DEBUG] Failed to retrieve key: {:?}", e);
+            return Err(e);
+        }
+    }
 
     Ok(())
 }

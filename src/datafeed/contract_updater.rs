@@ -18,7 +18,7 @@ use crate::config::models::{Datafeed, OmikujiConfig};
 use crate::contracts::FluxAggregatorContract;
 use crate::database::TransactionLogRepository;
 use crate::gas_price::GasPriceManager;
-use crate::metrics::{FeedMetrics, UpdateMetrics, UpdateReason, SkipReason};
+use crate::metrics::{FeedMetrics, SkipReason, UpdateMetrics, UpdateReason};
 use crate::network::NetworkManager;
 
 /// Handles contract updates based on time and deviation thresholds
@@ -207,7 +207,7 @@ impl<'a> ContractUpdater<'a> {
                 "Datafeed {}: deviation {}% exceeds threshold {}%",
                 datafeed.name, deviation, datafeed.deviation_threshold_pct
             );
-            
+
             // Record deviation breach
             UpdateMetrics::record_deviation_breach(
                 &datafeed.name,
@@ -218,11 +218,7 @@ impl<'a> ContractUpdater<'a> {
         }
 
         // Record deviation at check time
-        UpdateMetrics::record_update_deviation(
-            &datafeed.name,
-            &datafeed.networks,
-            deviation,
-        );
+        UpdateMetrics::record_update_deviation(&datafeed.name, &datafeed.networks, deviation);
 
         Ok(exceeds_threshold)
     }
@@ -241,12 +237,28 @@ impl<'a> ContractUpdater<'a> {
             .await?;
 
         // Determine if update is needed and why
-        let (should_update, reason_str, update_reason, skip_reason) = match (time_check, deviation_check) {
-            (true, true) => (true, "both time and deviation thresholds", Some(UpdateReason::Both), None),
-            (true, false) => (true, "time threshold", Some(UpdateReason::TimeThreshold), None),
-            (false, true) => (true, "deviation threshold", Some(UpdateReason::DeviationThreshold), None),
-            (false, false) => (false, "", None, Some(SkipReason::NoDeviation)),
-        };
+        let (should_update, reason_str, update_reason, skip_reason) =
+            match (time_check, deviation_check) {
+                (true, true) => (
+                    true,
+                    "both time and deviation thresholds",
+                    Some(UpdateReason::Both),
+                    None,
+                ),
+                (true, false) => (
+                    true,
+                    "time threshold",
+                    Some(UpdateReason::TimeThreshold),
+                    None,
+                ),
+                (false, true) => (
+                    true,
+                    "deviation threshold",
+                    Some(UpdateReason::DeviationThreshold),
+                    None,
+                ),
+                (false, false) => (false, "", None, Some(SkipReason::NoDeviation)),
+            };
 
         // Record update decision
         UpdateMetrics::record_update_decision(
@@ -333,11 +345,7 @@ impl<'a> ContractUpdater<'a> {
                 );
 
                 // Record successful update attempt
-                UpdateMetrics::record_update_attempt(
-                    &datafeed.name,
-                    &datafeed.networks,
-                    true,
-                );
+                UpdateMetrics::record_update_attempt(&datafeed.name, &datafeed.networks, true);
 
                 // Record update lag if we have timestamp info
                 if let Ok(current_time) = current_timestamp() {
@@ -357,14 +365,14 @@ impl<'a> ContractUpdater<'a> {
                     let gas_used = receipt.gas_used;
                     let effective_gas_price = receipt.effective_gas_price;
                     let tx_hash = format!("0x{:x}", receipt.transaction_hash);
-                    
+
                     if let Some(gas_cost_usd) = gas_price_manager
                         .calculate_usd_cost(
                             &datafeed.networks,
                             &datafeed.name,
                             &tx_hash,
                             gas_used as u64,
-                            effective_gas_price as u128,
+                            effective_gas_price,
                         )
                         .await
                     {
@@ -374,10 +382,10 @@ impl<'a> ContractUpdater<'a> {
                             &datafeed.name,
                             &datafeed.networks,
                             gas_used as u64,
-                            effective_gas_price as u128,
+                            effective_gas_price,
                             gas_cost_usd.gas_token_price_usd,
                         );
-                        
+
                         info!(
                             "Transaction cost: ${:.6} USD (gas: {}, price: {} wei, token: ${:.2})",
                             gas_cost_usd.total_cost_usd,
@@ -392,9 +400,9 @@ impl<'a> ContractUpdater<'a> {
             }
             Err(e) => {
                 error!("Failed to submit value to contract: {}", e);
-                
+
                 // Update attempt already recorded as failure above
-                
+
                 Err(anyhow::anyhow!(
                     "{}: {}",
                     errors::CONTRACT_SUBMISSION_FAILED,
