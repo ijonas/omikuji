@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
 use std::time::Duration;
 use tracing::{debug, warn};
@@ -99,7 +99,7 @@ impl NetworkMetrics {
         error_type: Option<&str>,
     ) {
         let status = if success { "success" } else { "error" };
-        
+
         RPC_REQUEST_COUNT
             .with_label_values(&[network, method, status])
             .inc();
@@ -113,15 +113,20 @@ impl NetworkMetrics {
             RPC_ERROR_COUNT
                 .with_label_values(&[network, error, method])
                 .inc();
-            
+
             warn!(
                 "RPC request failed on {}: {} - {} (latency: {:.3}s)",
-                network, method, error, latency.as_secs_f64()
+                network,
+                method,
+                error,
+                latency.as_secs_f64()
             );
         } else {
             debug!(
                 "RPC request on {}: {} completed in {:.3}s",
-                network, method, latency.as_secs_f64()
+                network,
+                method,
+                latency.as_secs_f64()
             );
         }
     }
@@ -130,7 +135,7 @@ impl NetworkMetrics {
     pub fn update_chain_head(network: &str, block_number: u64) {
         let gauge = CHAIN_HEAD_BLOCK.with_label_values(&[network]);
         let previous = gauge.get() as u64;
-        
+
         gauge.set(block_number as f64);
 
         // Check for reorg
@@ -141,11 +146,11 @@ impl NetworkMetrics {
                 2..=5 => "medium",
                 _ => "deep",
             };
-            
+
             CHAIN_REORG_COUNT
                 .with_label_values(&[network, depth_category])
                 .inc();
-            
+
             warn!(
                 "Chain reorganization detected on {}: {} -> {} (depth: {})",
                 network, previous, block_number, depth
@@ -171,7 +176,10 @@ impl NetworkMetrics {
             .set(if is_healthy { 1.0 } else { 0.0 });
 
         if !is_healthy {
-            warn!("RPC endpoint {} for network {} is unhealthy", endpoint, network);
+            warn!(
+                "RPC endpoint {} for network {} is unhealthy",
+                endpoint, network
+            );
         }
     }
 
@@ -208,11 +216,11 @@ impl NetworkMetrics {
         CONNECTION_POOL_SIZE
             .with_label_values(&[network, "active"])
             .set(active as f64);
-        
+
         CONNECTION_POOL_SIZE
             .with_label_values(&[network, "idle"])
             .set(idle as f64);
-        
+
         CONNECTION_POOL_SIZE
             .with_label_values(&[network, "total"])
             .set(total as f64);

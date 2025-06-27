@@ -32,13 +32,13 @@ impl PriceCache {
     /// Get a price from the cache
     pub async fn get(&self, token_id: &str) -> Option<GasTokenPrice> {
         let entries = self.entries.read().await;
-        
+
         if let Some(entry) = entries.get(token_id) {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            
+
             if now - entry.inserted_at <= self.ttl_seconds {
                 debug!("Cache hit for token {}", token_id);
                 return Some(entry.price.clone());
@@ -46,7 +46,7 @@ impl PriceCache {
                 debug!("Cache entry expired for token {}", token_id);
             }
         }
-        
+
         None
     }
 
@@ -57,9 +57,9 @@ impl PriceCache {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let mut results = HashMap::new();
-        
+
         for token_id in token_ids {
             if let Some(entry) = entries.get(token_id) {
                 if now - entry.inserted_at <= self.ttl_seconds {
@@ -67,7 +67,7 @@ impl PriceCache {
                 }
             }
         }
-        
+
         results
     }
 
@@ -77,16 +77,19 @@ impl PriceCache {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let entry = CacheEntry {
             price: price.clone(),
             inserted_at: now,
         };
-        
+
         let mut entries = self.entries.write().await;
         entries.insert(price.token_id.clone(), entry);
-        
-        debug!("Cached price for token {}: ${:.2}", price.token_id, price.price_usd);
+
+        debug!(
+            "Cached price for token {}: ${:.2}",
+            price.token_id, price.price_usd
+        );
     }
 
     /// Insert multiple prices into the cache
@@ -95,9 +98,9 @@ impl PriceCache {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let mut entries = self.entries.write().await;
-        
+
         for price in prices {
             let entry = CacheEntry {
                 price: price.clone(),
@@ -105,7 +108,7 @@ impl PriceCache {
             };
             entries.insert(price.token_id.clone(), entry);
         }
-        
+
         info!("Cached {} prices", entries.len());
     }
 
@@ -115,14 +118,12 @@ impl PriceCache {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let mut entries = self.entries.write().await;
         let initial_count = entries.len();
-        
-        entries.retain(|_token_id, entry| {
-            now - entry.inserted_at <= self.ttl_seconds
-        });
-        
+
+        entries.retain(|_token_id, entry| now - entry.inserted_at <= self.ttl_seconds);
+
         let removed = initial_count - entries.len();
         if removed > 0 {
             debug!("Cleared {} expired cache entries", removed);

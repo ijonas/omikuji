@@ -1,9 +1,9 @@
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 lazy_static! {
     /// Cumulative gas costs in USD
@@ -129,7 +129,7 @@ impl EconomicMetrics {
         native_token_price: f64,
     ) {
         let balance_usd = balance_native * native_token_price;
-        
+
         WALLET_BALANCE_USD
             .with_label_values(&[network, address])
             .set(balance_usd);
@@ -171,7 +171,7 @@ impl EconomicMetrics {
         };
 
         let clamped_runway = runway_days.min(365.0); // Cap at 1 year for display
-        
+
         ESTIMATED_RUNWAY_DAYS
             .with_label_values(&[network, address])
             .set(clamped_runway);
@@ -190,18 +190,12 @@ impl EconomicMetrics {
     }
 
     /// Update daily spending rate
-    pub fn update_daily_spending_rate(
-        network: &str,
-        rate_usd: f64,
-    ) {
+    pub fn update_daily_spending_rate(network: &str, rate_usd: f64) {
         DAILY_SPENDING_RATE_USD
             .with_label_values(&[network])
             .set(rate_usd);
 
-        debug!(
-            "Daily spending rate for {}: ${:.2} USD",
-            network, rate_usd
-        );
+        debug!("Daily spending rate for {}: ${:.2} USD", network, rate_usd);
     }
 
     /// Record gas price ratio
@@ -213,7 +207,7 @@ impl EconomicMetrics {
     ) {
         if network_avg_price_gwei > 0.0 {
             let ratio = paid_price_gwei / network_avg_price_gwei;
-            
+
             GAS_PRICE_RATIO
                 .with_label_values(&[feed_name, network])
                 .observe(ratio);
@@ -254,11 +248,7 @@ impl EconomicMetrics {
     }
 
     /// Update budget utilization
-    pub fn update_budget_utilization(
-        network: &str,
-        spent_usd: f64,
-        budget_usd: f64,
-    ) {
+    pub fn update_budget_utilization(network: &str, spent_usd: f64, budget_usd: f64) {
         let utilization = if budget_usd > 0.0 {
             (spent_usd / budget_usd) * 100.0
         } else {

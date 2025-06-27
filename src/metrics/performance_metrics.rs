@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use prometheus::{
-    register_gauge_vec, register_histogram_vec, register_counter_vec,
-    GaugeVec, HistogramVec, CounterVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
 use std::time::Duration;
 use tracing::{debug, warn};
@@ -100,11 +100,7 @@ impl PerformanceMetrics {
     }
 
     /// Update memory usage
-    pub fn update_memory_usage(
-        heap_bytes: usize,
-        stack_bytes: Option<usize>,
-        total_bytes: usize,
-    ) {
+    pub fn update_memory_usage(heap_bytes: usize, stack_bytes: Option<usize>, total_bytes: usize) {
         MEMORY_USAGE_BYTES
             .with_label_values(&["heap"])
             .set(heap_bytes as f64);
@@ -126,11 +122,7 @@ impl PerformanceMetrics {
     }
 
     /// Update open connections
-    pub fn update_open_connections(
-        connection_type: &str,
-        network: &str,
-        count: usize,
-    ) {
+    pub fn update_open_connections(connection_type: &str, network: &str, count: usize) {
         OPEN_CONNECTIONS
             .with_label_values(&[connection_type, network])
             .set(count as f64);
@@ -144,11 +136,7 @@ impl PerformanceMetrics {
     }
 
     /// Record task execution time
-    pub fn record_task_execution(
-        task_type: &str,
-        network: &str,
-        duration: Duration,
-    ) {
+    pub fn record_task_execution(task_type: &str, network: &str, duration: Duration) {
         TASK_EXECUTION_TIME_SECONDS
             .with_label_values(&[task_type, network])
             .observe(duration.as_secs_f64());
@@ -156,17 +144,15 @@ impl PerformanceMetrics {
         if duration.as_secs() > 30 {
             warn!(
                 "Long task execution time for {} on {}: {:.1}s",
-                task_type, network, duration.as_secs_f64()
+                task_type,
+                network,
+                duration.as_secs_f64()
             );
         }
     }
 
     /// Update CPU usage
-    pub fn update_cpu_usage(
-        user_percent: f64,
-        system_percent: f64,
-        total_percent: f64,
-    ) {
+    pub fn update_cpu_usage(user_percent: f64, system_percent: f64, total_percent: f64) {
         CPU_USAGE_PERCENT
             .with_label_values(&["user"])
             .set(user_percent);
@@ -233,12 +219,7 @@ impl PerformanceMetrics {
     }
 
     /// Update database connection pool
-    pub fn update_db_pool(
-        active: usize,
-        idle: usize,
-        waiting: usize,
-        max_size: usize,
-    ) {
+    pub fn update_db_pool(active: usize, idle: usize, waiting: usize, max_size: usize) {
         DB_CONNECTION_POOL
             .with_label_values(&["active"])
             .set(active as f64);
@@ -261,13 +242,9 @@ impl PerformanceMetrics {
     }
 
     /// Record cache operation
-    pub fn record_cache_operation(
-        cache_name: &str,
-        operation: &str,
-        hit: bool,
-    ) {
+    pub fn record_cache_operation(cache_name: &str, operation: &str, hit: bool) {
         let result = if hit { "hit" } else { "miss" };
-        
+
         CACHE_HIT_RATE
             .with_label_values(&[cache_name, operation, result])
             .inc();
@@ -290,7 +267,10 @@ impl PerformanceMetrics {
     pub fn get_cache_hit_rate(cache_name: &str) -> Option<f64> {
         // This is a helper method to calculate hit rate
         // In practice, you'd use Prometheus queries for this
-        debug!("Cache hit rate calculation for {} would be done via PromQL", cache_name);
+        debug!(
+            "Cache hit rate calculation for {} would be done via PromQL",
+            cache_name
+        );
         None
     }
 }

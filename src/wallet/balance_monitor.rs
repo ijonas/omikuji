@@ -1,5 +1,5 @@
 use crate::gas_price::GasPriceManager;
-use crate::metrics::{FeedMetrics, EconomicMetrics};
+use crate::metrics::{EconomicMetrics, FeedMetrics};
 use crate::network::NetworkManager;
 use alloy::primitives::utils::format_units;
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ impl WalletBalanceMonitor {
             daily_spending_estimates: HashMap::new(),
         }
     }
-    
+
     /// Set the gas price manager
     pub fn with_gas_price_manager(mut self, gas_price_manager: Arc<GasPriceManager>) -> Self {
         self.gas_price_manager = Some(gas_price_manager);
@@ -89,7 +89,8 @@ impl WalletBalanceMonitor {
                 );
 
                 // Get native token price from gas price manager if available
-                let native_token_price = if let Some(ref gas_price_manager) = self.gas_price_manager {
+                let native_token_price = if let Some(ref gas_price_manager) = self.gas_price_manager
+                {
                     if let Some(price_info) = gas_price_manager.get_price(network_name).await {
                         price_info.price_usd
                     } else {
@@ -98,7 +99,7 @@ impl WalletBalanceMonitor {
                 } else {
                     1.0 // Default price if no gas price manager
                 };
-                
+
                 // Update economic metrics
                 EconomicMetrics::update_wallet_balance_usd(
                     network_name,
@@ -106,7 +107,7 @@ impl WalletBalanceMonitor {
                     balance_native,
                     native_token_price,
                 );
-                
+
                 // Update runway if we have spending data
                 if let Some(&daily_spend) = self.daily_spending_estimates.get(network_name) {
                     let balance_usd = balance_native * native_token_price;
@@ -116,7 +117,7 @@ impl WalletBalanceMonitor {
                         balance_usd,
                         daily_spend,
                     );
-                    
+
                     EconomicMetrics::update_daily_spending_rate(network_name, daily_spend);
                 }
 

@@ -1,8 +1,5 @@
 use lazy_static::lazy_static;
-use prometheus::{
-    register_counter_vec, register_gauge_vec,
-    CounterVec, GaugeVec,
-};
+use prometheus::{register_counter_vec, register_gauge_vec, CounterVec, GaugeVec};
 use tracing::{error, warn};
 
 lazy_static! {
@@ -153,8 +150,8 @@ impl AlertMetrics {
     ) {
         // Calculate health score (higher is better)
         // availability: 0-100%, performance: 0-100%, error_rate: 0-100% (inverted)
-        let health_score = (availability * 0.4 + performance * 0.3 + (100.0 - error_rate) * 0.3)
-            .clamp(0.0, 100.0);
+        let health_score =
+            (availability * 0.4 + performance * 0.3 + (100.0 - error_rate) * 0.3).clamp(0.0, 100.0);
 
         SYSTEM_HEALTH_SCORE
             .with_label_values(&[component])
@@ -169,20 +166,13 @@ impl AlertMetrics {
     }
 
     /// Update alert suppression status
-    pub fn update_alert_suppression(
-        alert_type: &str,
-        is_suppressed: bool,
-        reason: &str,
-    ) {
+    pub fn update_alert_suppression(alert_type: &str, is_suppressed: bool, reason: &str) {
         ALERT_SUPPRESSION_ACTIVE
             .with_label_values(&[alert_type, reason])
             .set(if is_suppressed { 1.0 } else { 0.0 });
 
         if is_suppressed {
-            warn!(
-                "Alert suppression active for {}: {}",
-                alert_type, reason
-            );
+            warn!("Alert suppression active for {}: {}", alert_type, reason);
         }
     }
 
@@ -227,18 +217,11 @@ impl AlertMetrics {
             .with_label_values(&[component, reason])
             .inc();
 
-        error!(
-            "EMERGENCY SHUTDOWN triggered for {}: {}",
-            component, reason
-        );
+        error!("EMERGENCY SHUTDOWN triggered for {}: {}", component, reason);
     }
 
     /// Update degraded mode status
-    pub fn update_degraded_mode(
-        component: &str,
-        is_degraded: bool,
-        degradation_type: &str,
-    ) {
+    pub fn update_degraded_mode(component: &str, is_degraded: bool, degradation_type: &str) {
         DEGRADED_MODE_ACTIVE
             .with_label_values(&[component, degradation_type])
             .set(if is_degraded { 1.0 } else { 0.0 });

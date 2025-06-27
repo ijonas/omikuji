@@ -79,8 +79,11 @@ pub enum PriceFetchError {
 #[async_trait::async_trait]
 pub trait PriceProvider: Send + Sync {
     /// Fetch prices for the given token IDs
-    async fn fetch_prices(&self, token_ids: &[String]) -> Result<Vec<GasTokenPrice>, PriceFetchError>;
-    
+    async fn fetch_prices(
+        &self,
+        token_ids: &[String],
+    ) -> Result<Vec<GasTokenPrice>, PriceFetchError>;
+
     /// Get the name of this provider
     fn name(&self) -> &str;
 }

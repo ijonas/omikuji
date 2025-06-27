@@ -75,12 +75,7 @@ pub struct ConfigMetrics;
 
 impl ConfigMetrics {
     /// Update active datafeed count
-    pub fn update_active_datafeeds(
-        network: &str,
-        active: usize,
-        paused: usize,
-        error: usize,
-    ) {
+    pub fn update_active_datafeeds(network: &str, active: usize, paused: usize, error: usize) {
         ACTIVE_DATAFEEDS
             .with_label_values(&[network, "active"])
             .set(active as f64);
@@ -131,7 +126,7 @@ impl ConfigMetrics {
     ) {
         // Sanitize RPC URL to not expose credentials
         let sanitized_url = sanitize_url(rpc_url);
-        
+
         NETWORK_CONFIG_INFO
             .with_label_values(&[
                 network,
@@ -143,22 +138,14 @@ impl ConfigMetrics {
     }
 
     /// Update monitoring cycle duration
-    pub fn update_monitoring_cycle(
-        cycle_type: &str,
-        duration_seconds: f64,
-    ) {
+    pub fn update_monitoring_cycle(cycle_type: &str, duration_seconds: f64) {
         MONITORING_CYCLE_DURATION_SECONDS
             .with_label_values(&[cycle_type])
             .set(duration_seconds);
     }
 
     /// Set version information
-    pub fn set_version_info(
-        version: &str,
-        git_commit: &str,
-        build_date: &str,
-        rust_version: &str,
-    ) {
+    pub fn set_version_info(version: &str, git_commit: &str, build_date: &str, rust_version: &str) {
         VERSION_INFO
             .with_label_values(&[version, git_commit, build_date, rust_version])
             .set(1.0);
@@ -179,40 +166,29 @@ impl ConfigMetrics {
     /// Record configuration reload
     pub fn record_config_reload(reload_type: &str, success: bool) {
         let status = if success { "success" } else { "failure" };
-        
-        let gauge = CONFIG_RELOAD_COUNT
-            .with_label_values(&[reload_type, status]);
+
+        let gauge = CONFIG_RELOAD_COUNT.with_label_values(&[reload_type, status]);
         gauge.set(gauge.get() + 1.0);
 
-        info!(
-            "Configuration reload ({}): {}",
-            reload_type, status
-        );
+        info!("Configuration reload ({}): {}", reload_type, status);
     }
 
     /// Set environment information
-    pub fn set_environment_info(
-        environment: &str,
-        deployment_type: &str,
-        region: &str,
-    ) {
+    pub fn set_environment_info(environment: &str, deployment_type: &str, region: &str) {
         ENVIRONMENT_INFO
             .with_label_values(&[environment, deployment_type, region])
             .set(1.0);
     }
 
     /// Set key storage configuration
-    pub fn set_key_storage_config(
-        storage_type: &str,
-        keyring_service: Option<&str>,
-    ) {
+    pub fn set_key_storage_config(storage_type: &str, keyring_service: Option<&str>) {
         let service = keyring_service.unwrap_or("none");
-        
+
         KEY_STORAGE_CONFIG
             .with_label_values(&[storage_type, service])
             .set(1.0);
     }
-    
+
     /// Record startup information from config
     pub fn record_startup_info(config: &crate::config::models::OmikujiConfig) {
         // Set version info
@@ -222,13 +198,13 @@ impl ConfigMetrics {
             option_env!("BUILD_DATE").unwrap_or("unknown"),
             option_env!("RUSTC_VERSION").unwrap_or("unknown"),
         );
-        
+
         // Set key storage config
         Self::set_key_storage_config(
             &config.key_storage.storage_type,
             Some(&config.key_storage.keyring.service),
         );
-        
+
         // Set network configs
         for network in &config.networks {
             Self::set_network_config(
@@ -238,7 +214,7 @@ impl ConfigMetrics {
                 network.gas_config.gas_multiplier,
             );
         }
-        
+
         // Set datafeed configs
         for datafeed in &config.datafeeds {
             Self::set_datafeed_config(
@@ -251,20 +227,16 @@ impl ConfigMetrics {
                 datafeed.minimum_update_frequency,
             );
         }
-        
+
         // Set environment info
-        Self::set_environment_info(
-            "production",
-            "daemon",
-            "global",
-        );
+        Self::set_environment_info("production", "daemon", "global");
     }
-    
+
     /// Set database status
     pub fn set_database_status(enabled: bool) {
         Self::update_feature_flag("database", enabled);
     }
-    
+
     /// Set metrics server status
     pub fn set_metrics_server_status(enabled: bool, port: u16) {
         Self::update_feature_flag("metrics_server", enabled);

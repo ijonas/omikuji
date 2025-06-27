@@ -60,7 +60,10 @@ impl CoinGeckoProvider {
 
 #[async_trait::async_trait]
 impl PriceProvider for CoinGeckoProvider {
-    async fn fetch_prices(&self, token_ids: &[String]) -> Result<Vec<GasTokenPrice>, PriceFetchError> {
+    async fn fetch_prices(
+        &self,
+        token_ids: &[String],
+    ) -> Result<Vec<GasTokenPrice>, PriceFetchError> {
         if token_ids.is_empty() {
             return Ok(vec![]);
         }
@@ -118,7 +121,7 @@ impl PriceProvider for CoinGeckoProvider {
             .as_secs();
 
         let mut prices = Vec::new();
-        
+
         for token_id in token_ids {
             if let Some(price_data) = data.prices.get(token_id) {
                 let symbol = price_data
@@ -135,10 +138,7 @@ impl PriceProvider for CoinGeckoProvider {
                     source: self.name().to_string(),
                 });
 
-                info!(
-                    "Fetched price for {}: ${:.2}",
-                    token_id, price_data.usd
-                );
+                info!("Fetched price for {}: ${:.2}", token_id, price_data.usd);
             } else {
                 warn!("No price data found for token: {}", token_id);
             }

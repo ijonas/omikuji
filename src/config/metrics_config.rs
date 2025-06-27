@@ -6,15 +6,15 @@ pub struct MetricsConfig {
     /// Enable metrics collection
     #[serde(default = "default_enabled")]
     pub enabled: bool,
-    
+
     /// Metrics server port
     #[serde(default = "default_port")]
     pub port: u16,
-    
+
     /// Enable detailed/high-cardinality metrics
     #[serde(default = "default_detailed_metrics")]
     pub detailed_metrics: bool,
-    
+
     /// Category-specific configuration
     #[serde(default)]
     pub categories: MetricCategories,
@@ -26,35 +26,35 @@ pub struct MetricCategories {
     /// Data source health metrics
     #[serde(default = "default_true")]
     pub datasource: bool,
-    
+
     /// Update decision metrics
     #[serde(default = "default_true")]
     pub update_decisions: bool,
-    
+
     /// Network/RPC metrics
     #[serde(default = "default_true")]
     pub network: bool,
-    
+
     /// Contract interaction metrics
     #[serde(default = "default_true")]
     pub contract: bool,
-    
+
     /// Data quality metrics
     #[serde(default = "default_true")]
     pub quality: bool,
-    
+
     /// Economic/cost metrics
     #[serde(default = "default_true")]
     pub economic: bool,
-    
+
     /// Performance metrics
     #[serde(default = "default_true")]
     pub performance: bool,
-    
+
     /// Configuration info metrics
     #[serde(default = "default_true")]
     pub config: bool,
-    
+
     /// Alert-worthy metrics
     #[serde(default = "default_true")]
     pub alerts: bool,
@@ -109,7 +109,7 @@ impl MetricsConfig {
         if !self.enabled {
             return false;
         }
-        
+
         match category {
             MetricCategory::Datasource => self.categories.datasource,
             MetricCategory::UpdateDecisions => self.categories.update_decisions,

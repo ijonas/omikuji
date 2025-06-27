@@ -1,9 +1,9 @@
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 lazy_static! {
     /// Feed value change rate
@@ -95,7 +95,7 @@ impl QualityMetrics {
         if previous_value != 0.0 && time_delta_seconds > 0.0 {
             let change_percent = ((current_value - previous_value).abs() / previous_value) * 100.0;
             let rate_per_minute = (change_percent / time_delta_seconds) * 60.0;
-            
+
             FEED_VALUE_CHANGE_RATE
                 .with_label_values(&[feed_name, network])
                 .observe(rate_per_minute);
@@ -136,13 +136,9 @@ impl QualityMetrics {
     }
 
     /// Update data consistency score
-    pub fn update_consistency_score(
-        feed_name: &str,
-        network: &str,
-        score: f64,
-    ) {
+    pub fn update_consistency_score(feed_name: &str, network: &str, score: f64) {
         let clamped_score = score.clamp(0.0, 100.0);
-        
+
         DATA_CONSISTENCY_SCORE
             .with_label_values(&[feed_name, network])
             .set(clamped_score);
@@ -184,7 +180,7 @@ impl QualityMetrics {
     ) {
         if ma_value != 0.0 {
             let deviation_percent = ((current_value - ma_value).abs() / ma_value) * 100.0;
-            
+
             VALUE_DEVIATION_FROM_MA
                 .with_label_values(&[feed_name, network, ma_period])
                 .observe(deviation_percent);
@@ -206,7 +202,7 @@ impl QualityMetrics {
         sources_compared: usize,
     ) {
         let clamped_agreement = agreement_percent.clamp(0.0, 100.0);
-        
+
         DATA_SOURCE_AGREEMENT
             .with_label_values(&[feed_name, network])
             .set(clamped_agreement);
@@ -238,11 +234,7 @@ impl QualityMetrics {
     }
 
     /// Record data gap
-    pub fn record_data_gap(
-        feed_name: &str,
-        network: &str,
-        gap_duration_seconds: f64,
-    ) {
+    pub fn record_data_gap(feed_name: &str, network: &str, gap_duration_seconds: f64) {
         let duration_category = match gap_duration_seconds {
             s if s < 300.0 => "short",
             s if s < 1800.0 => "medium",
@@ -271,7 +263,7 @@ impl QualityMetrics {
         // Weighted average: uptime 40%, accuracy 40%, consistency 20%
         let score = (uptime_percent * 0.4 + accuracy_percent * 0.4 + consistency_percent * 0.2)
             .clamp(0.0, 100.0);
-        
+
         FEED_RELIABILITY_SCORE
             .with_label_values(&[feed_name, network])
             .set(score);
@@ -290,7 +282,7 @@ impl QualityMetrics {
         system_timestamp: u64,
     ) {
         let drift_seconds = (feed_timestamp as i64 - system_timestamp as i64).abs() as f64;
-        
+
         TIMESTAMP_DRIFT_SECONDS
             .with_label_values(&[feed_name, network])
             .observe(drift_seconds);

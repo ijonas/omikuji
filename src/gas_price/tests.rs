@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn test_config_defaults() {
         let config = GasPriceFeedConfig::default();
-        
+
         assert!(!config.enabled);
         assert_eq!(config.update_frequency, 3600);
         assert_eq!(config.provider, "coingecko");
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_coingecko_config_defaults() {
         let config = CoinGeckoConfig::default();
-        
+
         assert!(config.api_key.is_none());
         assert_eq!(config.base_url, "https://api.coingecko.com/api/v3");
     }

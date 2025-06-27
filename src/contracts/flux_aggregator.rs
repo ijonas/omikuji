@@ -62,17 +62,21 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
     }
 
     /// Get the latest answer from the contract with metrics
-    pub async fn latest_answer_with_metrics(&self, feed_name: Option<&str>, network: Option<&str>) -> Result<I256> {
+    pub async fn latest_answer_with_metrics(
+        &self,
+        feed_name: Option<&str>,
+        network: Option<&str>,
+    ) -> Result<I256> {
         let start = Instant::now();
         let call = IFluxAggregator::latestAnswerCall {};
         let tx = TransactionRequest::default()
             .to(self.address)
             .input(call.abi_encode().into());
-        
+
         match self.provider.call(&tx).block(BlockId::latest()).await {
             Ok(result) => {
                 let duration = start.elapsed();
-                
+
                 // Record metrics if context is provided
                 if let (Some(feed), Some(net)) = (feed_name, network) {
                     ContractMetrics::record_contract_read(
@@ -84,13 +88,13 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                         None,
                     );
                 }
-                
+
                 let decoded = IFluxAggregator::latestAnswerCall::abi_decode_returns(&result, true)?;
                 Ok(decoded._0)
             }
             Err(e) => {
                 let duration = start.elapsed();
-                
+
                 // Record metrics if context is provided
                 if let (Some(feed), Some(net)) = (feed_name, network) {
                     ContractMetrics::record_contract_read(
@@ -102,7 +106,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                         Some(&e.to_string()),
                     );
                 }
-                
+
                 Err(e.into())
             }
         }
@@ -114,17 +118,21 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
     }
 
     /// Get the latest timestamp with metrics
-    pub async fn latest_timestamp_with_metrics(&self, feed_name: Option<&str>, network: Option<&str>) -> Result<U256> {
+    pub async fn latest_timestamp_with_metrics(
+        &self,
+        feed_name: Option<&str>,
+        network: Option<&str>,
+    ) -> Result<U256> {
         let start = Instant::now();
         let call = IFluxAggregator::latestTimestampCall {};
         let tx = TransactionRequest::default()
             .to(self.address)
             .input(call.abi_encode().into());
-        
+
         match self.provider.call(&tx).block(BlockId::latest()).await {
             Ok(result) => {
                 let duration = start.elapsed();
-                
+
                 // Record metrics if context is provided
                 if let (Some(feed), Some(net)) = (feed_name, network) {
                     ContractMetrics::record_contract_read(
@@ -136,13 +144,14 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                         None,
                     );
                 }
-                
-                let decoded = IFluxAggregator::latestTimestampCall::abi_decode_returns(&result, true)?;
+
+                let decoded =
+                    IFluxAggregator::latestTimestampCall::abi_decode_returns(&result, true)?;
                 Ok(decoded._0)
             }
             Err(e) => {
                 let duration = start.elapsed();
-                
+
                 // Record metrics if context is provided
                 if let (Some(feed), Some(net)) = (feed_name, network) {
                     ContractMetrics::record_contract_read(
@@ -154,7 +163,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                         Some(&e.to_string()),
                     );
                 }
-                
+
                 Err(e.into())
             }
         }
@@ -327,7 +336,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                 Err(e) => {
                     let write_duration = write_start.elapsed();
                     error!("Failed to send transaction: {}", e);
-                    
+
                     // Record failed contract write
                     ContractMetrics::record_contract_write(
                         feed_name,
@@ -336,7 +345,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                         write_duration,
                         None,
                     );
-                    
+
                     // Check for specific error types
                     let error_str = e.to_string();
                     if error_str.contains("revert") {
@@ -346,7 +355,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                             &error_str,
                         );
                     }
-                    
+
                     if attempt >= max_attempts {
                         ContractMetrics::record_transaction_retry(
                             feed_name,
@@ -360,7 +369,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                             e
                         ));
                     }
-                    
+
                     ContractMetrics::record_transaction_retry(
                         feed_name,
                         &network_config.name,

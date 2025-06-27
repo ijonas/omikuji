@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
 use tracing::{debug, info};
 
@@ -130,7 +130,7 @@ impl UpdateMetrics {
         skip_reason: Option<SkipReason>,
     ) {
         let decision = if should_update { "update" } else { "skip" };
-        
+
         let reason_str = if should_update {
             reason.map(|r| r.as_str()).unwrap_or("unknown")
         } else {
@@ -144,14 +144,20 @@ impl UpdateMetrics {
         // Update consecutive skipped counter
         if should_update {
             // Reset all skip counters
-            for skip in ["no_deviation", "too_soon", "no_change", "below_threshold", "error"] {
+            for skip in [
+                "no_deviation",
+                "too_soon",
+                "no_change",
+                "below_threshold",
+                "error",
+            ] {
                 CONSECUTIVE_SKIPPED_UPDATES
                     .with_label_values(&[feed_name, network, skip])
                     .set(0.0);
             }
         } else if let Some(skip) = skip_reason {
-            let gauge = CONSECUTIVE_SKIPPED_UPDATES
-                .with_label_values(&[feed_name, network, skip.as_str()]);
+            let gauge =
+                CONSECUTIVE_SKIPPED_UPDATES.with_label_values(&[feed_name, network, skip.as_str()]);
             gauge.set(gauge.get() + 1.0);
         }
 
@@ -253,24 +259,16 @@ impl UpdateMetrics {
     }
 
     /// Record deviation at update time
-    pub fn record_update_deviation(
-        feed_name: &str,
-        network: &str,
-        deviation_percent: f64,
-    ) {
+    pub fn record_update_deviation(feed_name: &str, network: &str, deviation_percent: f64) {
         UPDATE_DEVIATION_PERCENT
             .with_label_values(&[feed_name, network])
             .observe(deviation_percent);
     }
 
     /// Record update attempt
-    pub fn record_update_attempt(
-        feed_name: &str,
-        network: &str,
-        success: bool,
-    ) {
+    pub fn record_update_attempt(feed_name: &str, network: &str, success: bool) {
         let result = if success { "success" } else { "failure" };
-        
+
         UPDATE_ATTEMPT_COUNT
             .with_label_values(&[feed_name, network, result])
             .inc();

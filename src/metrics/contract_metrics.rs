@@ -1,10 +1,10 @@
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter_vec, register_gauge_vec, register_histogram_vec,
-    CounterVec, GaugeVec, HistogramVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
 use std::time::Duration;
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 lazy_static! {
     /// Contract read operations counter
@@ -102,7 +102,7 @@ impl ContractMetrics {
         error: Option<&str>,
     ) {
         let status = if success { "success" } else { "error" };
-        
+
         CONTRACT_READ_COUNT
             .with_label_values(&[feed_name, network, method, status])
             .inc();
@@ -113,13 +113,14 @@ impl ContractMetrics {
 
         if !success {
             let err = error.unwrap_or("unknown");
-            
+
             // Check for permission errors
-            if err.contains("permission") || err.contains("unauthorized") || err.contains("access") {
+            if err.contains("permission") || err.contains("unauthorized") || err.contains("access")
+            {
                 CONTRACT_PERMISSION_ERROR_COUNT
                     .with_label_values(&[feed_name, network, method])
                     .inc();
-                
+
                 error!(
                     "Permission error reading contract {}/{} method {}: {}",
                     feed_name, network, method, err
@@ -133,7 +134,10 @@ impl ContractMetrics {
         } else {
             debug!(
                 "Contract read {}/{} method {} completed in {:.3}s",
-                feed_name, network, method, latency.as_secs_f64()
+                feed_name,
+                network,
+                method,
+                latency.as_secs_f64()
             );
         }
     }
@@ -147,7 +151,7 @@ impl ContractMetrics {
         tx_hash: Option<&str>,
     ) {
         let status = if success { "success" } else { "error" };
-        
+
         CONTRACT_WRITE_COUNT
             .with_label_values(&[feed_name, network, status])
             .inc();
@@ -159,7 +163,9 @@ impl ContractMetrics {
         if success {
             debug!(
                 "Contract write {}/{} succeeded in {:.3}s, tx: {}",
-                feed_name, network, latency.as_secs_f64(), 
+                feed_name,
+                network,
+                latency.as_secs_f64(),
                 tx_hash.unwrap_or("unknown")
             );
         }
@@ -219,11 +225,7 @@ impl ContractMetrics {
     }
 
     /// Record a transaction revert
-    pub fn record_transaction_revert(
-        feed_name: &str,
-        network: &str,
-        reason: &str,
-    ) {
+    pub fn record_transaction_revert(feed_name: &str, network: &str, reason: &str) {
         let reason_category = if reason.contains("gas") {
             "out_of_gas"
         } else if reason.contains("nonce") {
@@ -255,7 +257,7 @@ impl ContractMetrics {
     ) {
         if confirmation_time > submission_time {
             let duration_seconds = (confirmation_time - submission_time) as f64;
-            
+
             TRANSACTION_CONFIRMATION_TIME_SECONDS
                 .with_label_values(&[feed_name, network])
                 .observe(duration_seconds);
@@ -305,11 +307,7 @@ impl ContractMetrics {
     }
 
     /// Record mempool time
-    pub fn record_mempool_time(
-        feed_name: &str,
-        network: &str,
-        mempool_seconds: f64,
-    ) {
+    pub fn record_mempool_time(feed_name: &str, network: &str, mempool_seconds: f64) {
         TRANSACTION_MEMPOOL_TIME_SECONDS
             .with_label_values(&[feed_name, network])
             .observe(mempool_seconds);

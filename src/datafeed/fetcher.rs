@@ -39,8 +39,11 @@ impl Fetcher {
     /// Fetches JSON data from the specified URL
     /// Returns the parsed JSON value on success
     pub async fn fetch_json(&self, url: &str, feed_name: &str, network: &str) -> Result<Value> {
-        debug!("Fetching data from: {} for feed {}/{}", url, feed_name, network);
-        
+        debug!(
+            "Fetching data from: {} for feed {}/{}",
+            url, feed_name, network
+        );
+
         let start_time = Instant::now();
 
         let response = match self
@@ -54,7 +57,7 @@ impl Fetcher {
             Err(e) => {
                 let duration = start_time.elapsed();
                 error!("Network error fetching from {}: {}", url, e);
-                
+
                 // Record HTTP error metric
                 DatasourceMetrics::record_http_error(
                     feed_name,
@@ -63,7 +66,7 @@ impl Fetcher {
                     &e.to_string(),
                     Some(duration),
                 );
-                
+
                 return Err(FetchError::Network(e.to_string()).into());
             }
         };
@@ -78,7 +81,7 @@ impl Fetcher {
                 status.as_u16(),
                 status.canonical_reason().unwrap_or("Unknown")
             );
-            
+
             // Record HTTP request metric with error status
             DatasourceMetrics::record_http_request(
                 feed_name,
@@ -89,7 +92,7 @@ impl Fetcher {
                 duration,
                 content_length,
             );
-            
+
             return Err(FetchError::Http(status.as_u16()).into());
         }
 
@@ -99,7 +102,7 @@ impl Fetcher {
             Ok(json) => {
                 let parse_duration = parse_start.elapsed();
                 let total_duration = start_time.elapsed();
-                
+
                 // Record successful metrics
                 DatasourceMetrics::record_http_request(
                     feed_name,
@@ -110,7 +113,7 @@ impl Fetcher {
                     total_duration,
                     content_length,
                 );
-                
+
                 DatasourceMetrics::record_parse_operation(
                     feed_name,
                     network,
@@ -118,22 +121,22 @@ impl Fetcher {
                     parse_duration,
                     None,
                 );
-                
+
                 DatasourceMetrics::record_datasource_operation(
                     feed_name,
                     network,
                     true,
                     total_duration,
                 );
-                
+
                 json
             }
             Err(e) => {
                 let parse_duration = parse_start.elapsed();
                 let total_duration = start_time.elapsed();
-                
+
                 error!("JSON parsing error: {}", e);
-                
+
                 // Record parsing error
                 DatasourceMetrics::record_parse_operation(
                     feed_name,
@@ -142,14 +145,14 @@ impl Fetcher {
                     parse_duration,
                     Some("json_parse_error"),
                 );
-                
+
                 DatasourceMetrics::record_datasource_operation(
                     feed_name,
                     network,
                     false,
                     total_duration,
                 );
-                
+
                 return Err(FetchError::Json(e.to_string()).into());
             }
         };

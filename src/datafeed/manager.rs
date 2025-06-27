@@ -168,12 +168,12 @@ impl FeedManager {
             self.repository.clone(),
             self.tx_log_repo.clone(),
         );
-        
+
         // Set gas price manager if available
         if let Some(ref gas_price_manager) = self.gas_price_manager {
             monitor = monitor.with_gas_price_manager(Arc::clone(gas_price_manager));
         }
-        
+
         let feed_name = datafeed.name.clone();
 
         tokio::spawn(async move {

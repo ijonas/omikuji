@@ -2,8 +2,8 @@ use crate::config::metrics_config::MetricCategory;
 use crate::metrics::config_manager::is_metric_enabled;
 use lazy_static::lazy_static;
 use prometheus::{
-    register_counter_vec, register_histogram_vec, register_gauge_vec, 
-    CounterVec, HistogramVec, GaugeVec,
+    register_counter_vec, register_gauge_vec, register_histogram_vec, CounterVec, GaugeVec,
+    HistogramVec,
 };
 use std::time::Duration;
 use tracing::{debug, warn};
@@ -88,7 +88,7 @@ impl DatasourceMetrics {
         if !is_metric_enabled(MetricCategory::Datasource) {
             return;
         }
-        
+
         let status = match status_code {
             200..=299 => "success",
             400..=499 => "client_error",
@@ -132,7 +132,7 @@ impl DatasourceMetrics {
                 .with_label_values(&[feed_name, network, url])
                 .inc();
             warn!(
-                "Rate limit hit for {} on {} from {}", 
+                "Rate limit hit for {} on {} from {}",
                 feed_name, network, url
             );
         }
@@ -160,7 +160,7 @@ impl DatasourceMetrics {
         if !is_metric_enabled(MetricCategory::Datasource) {
             return;
         }
-        
+
         // Increment error counter
         HTTP_REQUEST_COUNT
             .with_label_values(&[feed_name, network, "error", "GET"])
@@ -189,16 +189,19 @@ impl DatasourceMetrics {
             "other"
         };
 
-        let gauge = DATASOURCE_ERROR_COUNT
-            .with_label_values(&[feed_name, network, error_type]);
-        
+        let gauge = DATASOURCE_ERROR_COUNT.with_label_values(&[feed_name, network, error_type]);
+
         // Increment the current value
         let current = gauge.get();
         gauge.set(current + 1.0);
 
         warn!(
             "HTTP request failed for {} on {} from {}: {} (consecutive errors: {})",
-            feed_name, network, url, error, current + 1.0
+            feed_name,
+            network,
+            url,
+            error,
+            current + 1.0
         );
     }
 
@@ -213,7 +216,7 @@ impl DatasourceMetrics {
         if !is_metric_enabled(MetricCategory::Datasource) {
             return;
         }
-        
+
         DATASOURCE_LATENCY_SECONDS
             .with_label_values(&[feed_name, network, "parse"])
             .observe(duration.as_secs_f64());
@@ -223,9 +226,9 @@ impl DatasourceMetrics {
             PARSE_ERROR_COUNT
                 .with_label_values(&[feed_name, network, error])
                 .inc();
-            
+
             warn!(
-                "Failed to parse data for {} on {}: {}", 
+                "Failed to parse data for {} on {}: {}",
                 feed_name, network, error
             );
         }
@@ -241,9 +244,9 @@ impl DatasourceMetrics {
         if !is_metric_enabled(MetricCategory::Datasource) {
             return;
         }
-        
+
         let operation = if success { "success" } else { "failure" };
-        
+
         DATASOURCE_LATENCY_SECONDS
             .with_label_values(&[feed_name, network, operation])
             .observe(total_duration.as_secs_f64());
