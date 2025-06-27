@@ -36,32 +36,28 @@ COMMENT ON COLUMN feed_log.created_at IS 'Timestamp when the record was created'
 -- Create transaction_log table for tracking blockchain transactions
 CREATE TABLE IF NOT EXISTS transaction_log (
     id SERIAL PRIMARY KEY,
+    tx_hash VARCHAR(66) NOT NULL,
     feed_name VARCHAR(255) NOT NULL,
     network_name VARCHAR(255) NOT NULL,
-    transaction_hash VARCHAR(66) NOT NULL,
-    from_address VARCHAR(42) NOT NULL,
-    to_address VARCHAR(42) NOT NULL,
-    value NUMERIC(78, 0) NOT NULL DEFAULT 0,
-    gas_price BIGINT,
-    gas_limit BIGINT,
-    gas_used BIGINT,
-    block_number BIGINT,
-    block_hash VARCHAR(66),
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    gas_limit BIGINT NOT NULL,
+    gas_used BIGINT NOT NULL,
+    gas_price_gwei DOUBLE PRECISION NOT NULL,
+    total_cost_wei NUMERIC(78, 0) NOT NULL,
+    efficiency_percent DOUBLE PRECISION NOT NULL,
+    tx_type VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    block_number BIGINT NOT NULL,
     error_message TEXT,
-    feed_value DOUBLE PRECISION,
-    feed_timestamp BIGINT,
-    deviation_percentage DOUBLE PRECISION,
-    update_reason VARCHAR(50),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    confirmed_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    max_fee_per_gas_gwei DOUBLE PRECISION,
+    max_priority_fee_per_gas_gwei DOUBLE PRECISION,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_tx_hash UNIQUE (tx_hash)
 );
 
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_transaction_log_feed_name ON transaction_log(feed_name);
 CREATE INDEX IF NOT EXISTS idx_transaction_log_network_name ON transaction_log(network_name);
-CREATE INDEX IF NOT EXISTS idx_transaction_log_transaction_hash ON transaction_log(transaction_hash);
+CREATE INDEX IF NOT EXISTS idx_transaction_log_tx_hash ON transaction_log(tx_hash);
 CREATE INDEX IF NOT EXISTS idx_transaction_log_status ON transaction_log(status);
 CREATE INDEX IF NOT EXISTS idx_transaction_log_created_at ON transaction_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_transaction_log_block_number ON transaction_log(block_number);
@@ -70,26 +66,21 @@ CREATE INDEX IF NOT EXISTS idx_transaction_log_feed_network ON transaction_log(f
 -- Add comments to the table
 COMMENT ON TABLE transaction_log IS 'Log of all blockchain transactions sent by Omikuji';
 COMMENT ON COLUMN transaction_log.id IS 'Auto-incrementing internal transaction ID';
+COMMENT ON COLUMN transaction_log.tx_hash IS 'Blockchain transaction hash';
 COMMENT ON COLUMN transaction_log.feed_name IS 'Feed name that triggered this transaction';
 COMMENT ON COLUMN transaction_log.network_name IS 'Blockchain network name';
-COMMENT ON COLUMN transaction_log.transaction_hash IS 'Blockchain transaction hash';
-COMMENT ON COLUMN transaction_log.from_address IS 'Sender address (wallet)';
-COMMENT ON COLUMN transaction_log.to_address IS 'Contract address';
-COMMENT ON COLUMN transaction_log.value IS 'ETH/native token value sent (in wei)';
-COMMENT ON COLUMN transaction_log.gas_price IS 'Gas price in wei';
 COMMENT ON COLUMN transaction_log.gas_limit IS 'Gas limit for the transaction';
-COMMENT ON COLUMN transaction_log.gas_used IS 'Actual gas used (filled after confirmation)';
+COMMENT ON COLUMN transaction_log.gas_used IS 'Actual gas used';
+COMMENT ON COLUMN transaction_log.gas_price_gwei IS 'Gas price in gwei';
+COMMENT ON COLUMN transaction_log.total_cost_wei IS 'Total transaction cost in wei';
+COMMENT ON COLUMN transaction_log.efficiency_percent IS 'Gas efficiency percentage (gas_used/gas_limit * 100)';
+COMMENT ON COLUMN transaction_log.tx_type IS 'Transaction type (legacy, eip1559)';
+COMMENT ON COLUMN transaction_log.status IS 'Transaction status: success, failed, pending';
 COMMENT ON COLUMN transaction_log.block_number IS 'Block number when transaction was mined';
-COMMENT ON COLUMN transaction_log.block_hash IS 'Block hash when transaction was mined';
-COMMENT ON COLUMN transaction_log.status IS 'Transaction status: pending, confirmed, failed';
 COMMENT ON COLUMN transaction_log.error_message IS 'Error message if transaction failed';
-COMMENT ON COLUMN transaction_log.feed_value IS 'The feed value that triggered this update';
-COMMENT ON COLUMN transaction_log.feed_timestamp IS 'Feed timestamp for the value';
-COMMENT ON COLUMN transaction_log.deviation_percentage IS 'Percentage deviation that triggered update';
-COMMENT ON COLUMN transaction_log.update_reason IS 'Reason for update: deviation, time, force';
+COMMENT ON COLUMN transaction_log.max_fee_per_gas_gwei IS 'Max fee per gas in gwei (EIP-1559)';
+COMMENT ON COLUMN transaction_log.max_priority_fee_per_gas_gwei IS 'Max priority fee per gas in gwei (EIP-1559)';
 COMMENT ON COLUMN transaction_log.created_at IS 'When the transaction was created';
-COMMENT ON COLUMN transaction_log.confirmed_at IS 'When the transaction was confirmed on-chain';
-COMMENT ON COLUMN transaction_log.updated_at IS 'Last update to this record';
 
 -- Create gas price tracking tables
 CREATE TABLE IF NOT EXISTS gas_price_log (

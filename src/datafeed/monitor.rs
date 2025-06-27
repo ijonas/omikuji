@@ -79,7 +79,14 @@ impl FeedMonitor {
             }
 
             let check_start = Instant::now();
-            self.last_check_time = Some(check_start);
+
+            // Calculate time since last check BEFORE updating last_check_time
+            let time_since_last_check = if let Some(last_check) = self.last_check_time {
+                last_check.elapsed().as_secs_f64()
+            } else {
+                // For the first check, use the configured check frequency
+                self.datafeed.check_frequency as f64
+            };
 
             match self.poll_once().await {
                 Ok((value, timestamp)) => {
@@ -98,7 +105,7 @@ impl FeedMonitor {
 
                     // Update quality metrics
                     if let Some(last_val) = self.last_value {
-                        let time_delta = check_start.elapsed().as_secs_f64();
+                        let time_delta = time_since_last_check;
 
                         // Record value change rate
                         QualityMetrics::record_value_change_rate(
@@ -136,6 +143,7 @@ impl FeedMonitor {
                     );
 
                     self.last_value = Some(value);
+                    self.last_check_time = Some(check_start);
 
                     // Update contract metrics (read current contract state)
                     let updater = if let Some(ref tx_repo) = self.tx_log_repo {
@@ -199,6 +207,9 @@ impl FeedMonitor {
                 }
                 Err(e) => {
                     error!("Datafeed {}: {}", self.datafeed.name, e);
+
+                    // Update last check time even on error to maintain accurate timing
+                    self.last_check_time = Some(check_start);
 
                     // Save error to database if repository is available
                     if let Some(ref repository) = self.repository {
