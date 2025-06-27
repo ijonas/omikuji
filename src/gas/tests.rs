@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod gas_estimator_tests {
-    use super::super::estimator::{GasEstimate, GasEstimator};
+    use super::super::estimator::GasEstimate;
     use crate::config::models::{FeeBumpingConfig, GasConfig, Network};
     use alloy::primitives::U256;
-    use std::sync::Arc;
 
     fn create_test_network(tx_type: &str) -> Network {
         Network {
@@ -23,6 +22,8 @@ mod gas_estimator_tests {
                     fee_increase_percent: 10.0,
                 },
             },
+            gas_token: "ethereum".to_string(),
+            gas_token_symbol: "ETH".to_string(),
         }
     }
 

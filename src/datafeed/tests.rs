@@ -164,7 +164,7 @@ mod tests {
 
             let fetcher = Fetcher::new();
             let url = format!("{}/api/data", server.url());
-            let result = fetcher.fetch_json(&url).await;
+            let result = fetcher.fetch_json(&url, "test_feed", "test_network").await;
 
             assert!(result.is_ok());
             let json = result.unwrap();
@@ -187,7 +187,7 @@ mod tests {
 
             let fetcher = Fetcher::new();
             let url = format!("{}/api/error", server.url());
-            let result = fetcher.fetch_json(&url).await;
+            let result = fetcher.fetch_json(&url, "test_feed", "test_network").await;
 
             assert!(result.is_err());
             assert!(result
@@ -212,7 +212,7 @@ mod tests {
 
             let fetcher = Fetcher::new();
             let url = format!("{}/api/invalid", server.url());
-            let result = fetcher.fetch_json(&url).await;
+            let result = fetcher.fetch_json(&url, "test_feed", "test_network").await;
 
             assert!(result.is_err());
             assert!(result
@@ -228,7 +228,11 @@ mod tests {
             let fetcher = Fetcher::new();
             // Use an invalid URL that will fail to connect
             let result = fetcher
-                .fetch_json("http://localhost:99999/nonexistent")
+                .fetch_json(
+                    "http://localhost:99999/nonexistent",
+                    "test_feed",
+                    "test_network",
+                )
                 .await;
 
             assert!(result.is_err());

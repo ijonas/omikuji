@@ -203,7 +203,6 @@ async fn export_key(network: String, service: Option<String>) -> Result<()> {
         network,
         secrecy::ExposeSecret::expose_secret(&key)
     );
-    }
 
     Ok(())
 }

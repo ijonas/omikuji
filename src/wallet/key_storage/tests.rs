@@ -3,7 +3,6 @@ mod tests {
     use super::super::*;
     use secrecy::SecretString;
     use std::env;
-    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_env_var_storage_get_key() {

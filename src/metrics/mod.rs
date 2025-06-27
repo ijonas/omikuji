@@ -12,14 +12,13 @@ pub mod quality_metrics;
 pub mod server;
 pub mod update_metrics;
 
-pub use config_manager::{get_metrics_config, init_metrics_config, is_metric_enabled};
+pub use config_manager::init_metrics_config;
 pub use config_metrics::ConfigMetrics;
 pub use contract_metrics::ContractMetrics;
 pub use datasource_metrics::DatasourceMetrics;
 pub use economic_metrics::EconomicMetrics;
 pub use feed_metrics::FeedMetrics;
 pub use network_metrics::NetworkMetrics;
-pub use performance_metrics::PerformanceMetrics;
 pub use quality_metrics::QualityMetrics;
 pub use server::start_metrics_server;
 pub use update_metrics::{SkipReason, UpdateMetrics, UpdateReason};

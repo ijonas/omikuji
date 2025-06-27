@@ -12,6 +12,8 @@ mod tests {
             rpc_url: rpc_url.to_string(),
             transaction_type: "eip1559".to_string(),
             gas_config: Default::default(),
+            gas_token: "ethereum".to_string(),
+            gas_token_symbol: "ETH".to_string(),
         }
     }
 

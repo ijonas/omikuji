@@ -49,14 +49,14 @@ impl KeyStorage for KeyringStorage {
         let entry = self.get_entry(network)?;
         let password = entry.get_password().map_err(|e| {
             let error_string = e.to_string();
-            
+
             // Provide helpful context for common errors
             if error_string.contains("not found") || error_string.contains("No such secret") {
                 debug!("Key not found in keyring for network '{}'", network);
             } else if error_string.contains("D-Bus") || error_string.contains("dbus") {
                 warn!("Keyring unavailable: D-Bus session not found (common in SSH sessions)");
             }
-            
+
             anyhow!("Failed to retrieve key for network '{}': {}", network, e)
         })?;
 
@@ -68,16 +68,18 @@ impl KeyStorage for KeyringStorage {
         debug!("Storing key for network '{}'", network);
 
         // Check for common environment issues
-        if std::env::var("SSH_CONNECTION").is_ok() && std::env::var("DBUS_SESSION_BUS_ADDRESS").is_err() {
+        if std::env::var("SSH_CONNECTION").is_ok()
+            && std::env::var("DBUS_SESSION_BUS_ADDRESS").is_err()
+        {
             warn!("SSH session without D-Bus detected - keyring may not persist data");
         }
-        
+
         if std::path::Path::new("/.dockerenv").exists() {
             warn!("Running in Docker container - keyring may not be available");
         }
 
         let entry = self.get_entry(network)?;
-        
+
         entry.set_password(key.expose_secret()).map_err(|e| {
             let error_string = e.to_string();
             if error_string.contains("D-Bus") || error_string.contains("dbus") {
@@ -86,13 +88,16 @@ impl KeyStorage for KeyringStorage {
             anyhow!("Failed to store key for network '{}': {}", network, e)
         })?;
 
-        info!("Successfully stored key for network '{}'" ,network);
-        
+        info!("Successfully stored key for network '{}'", network);
+
         // Verify the key was actually stored (helps detect non-persistent backends)
         match entry.get_password() {
             Ok(_) => debug!("Key verification successful"),
             Err(e) => {
-                warn!("Key verification failed - keyring may be using non-persistent backend: {}", e);
+                warn!(
+                    "Key verification failed - keyring may be using non-persistent backend: {}",
+                    e
+                );
             }
         }
 

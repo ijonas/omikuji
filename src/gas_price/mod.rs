@@ -7,4 +7,3 @@ pub mod providers;
 mod tests;
 
 pub use manager::GasPriceManager;
-pub use models::{GasCostUsd, GasPriceFeedConfig, GasTokenPrice};

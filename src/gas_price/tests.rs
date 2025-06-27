@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use super::super::*;
     use crate::gas_price::cache::PriceCache;
     use crate::gas_price::models::{CoinGeckoConfig, GasPriceFeedConfig, GasTokenPrice};
     use std::time::{SystemTime, UNIX_EPOCH};

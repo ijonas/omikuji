@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 mod cli;
 mod config;
@@ -163,10 +163,7 @@ async fn main() -> Result<()> {
                     }
                 }
 
-                error!(
-                    "Failed to load wallet for network {}: {}",
-                    network.name, e
-                );
+                error!("Failed to load wallet for network {}: {}", network.name, e);
                 warn!(
                     "Transactions on {} network will not be possible",
                     network.name
