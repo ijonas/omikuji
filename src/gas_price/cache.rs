@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 /// In-memory price cache
+#[allow(dead_code)]
 pub struct PriceCache {
     /// Cache entries by token ID
     entries: Arc<RwLock<HashMap<String, CacheEntry>>>,
@@ -20,6 +21,7 @@ struct CacheEntry {
     inserted_at: u64,
 }
 
+#[allow(dead_code)]
 impl PriceCache {
     /// Create a new price cache with the given TTL
     pub fn new(ttl_seconds: u64) -> Self {

@@ -1,11 +1,10 @@
 use crate::gas_price::GasPriceManager;
 use crate::metrics::{EconomicMetrics, FeedMetrics};
 use crate::network::NetworkManager;
-use alloy::primitives::utils::format_units;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Monitors wallet balances across all networks
 pub struct WalletBalanceMonitor {
@@ -92,11 +91,20 @@ impl WalletBalanceMonitor {
                 let native_token_price = if let Some(ref gas_price_manager) = self.gas_price_manager
                 {
                     if let Some(price_info) = gas_price_manager.get_price(network_name).await {
+                        info!(
+                            "Got price for {} from gas price manager: ${:.2} USD (token: {})",
+                            network_name, price_info.price_usd, price_info.symbol
+                        );
                         price_info.price_usd
                     } else {
+                        warn!(
+                            "No price available for {} from gas price manager, using default $1.0",
+                            network_name
+                        );
                         1.0 // Default if price not available
                     }
                 } else {
+                    debug!("No gas price manager configured, using default price $1.0");
                     1.0 // Default price if no gas price manager
                 };
 
@@ -121,13 +129,14 @@ impl WalletBalanceMonitor {
                     EconomicMetrics::update_daily_spending_rate(network_name, daily_spend);
                 }
 
-                debug!(
-                    "Updated wallet balance for {} on {}: {} wei ({} ETH, ${:.2} USD)",
+                info!(
+                    "Updated wallet balance for {} on {}: {} wei ({:.6} native tokens, ${:.2} USD @ ${:.2}/token)",
                     address,
                     network_name,
                     balance_wei,
-                    format_units(balance, "ether").unwrap_or_else(|_| "error".to_string()),
-                    balance_native * native_token_price
+                    balance_native,
+                    balance_native * native_token_price,
+                    native_token_price
                 );
 
                 Ok(())

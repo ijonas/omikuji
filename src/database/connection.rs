@@ -69,7 +69,7 @@ pub async fn verify_tables(pool: &DatabasePool) -> Result<()> {
             SELECT FROM information_schema.tables 
             WHERE table_schema = 'public' 
             AND table_name = 'feed_log'
-        )"
+        )",
     )
     .fetch_one(pool)
     .await
@@ -85,7 +85,7 @@ pub async fn verify_tables(pool: &DatabasePool) -> Result<()> {
             SELECT FROM information_schema.tables 
             WHERE table_schema = 'public' 
             AND table_name = 'transaction_log'
-        )"
+        )",
     )
     .fetch_one(pool)
     .await
@@ -101,7 +101,7 @@ pub async fn verify_tables(pool: &DatabasePool) -> Result<()> {
             SELECT FROM information_schema.tables 
             WHERE table_schema = 'public' 
             AND table_name = 'gas_price_log'
-        )"
+        )",
     )
     .fetch_one(pool)
     .await
@@ -118,11 +118,14 @@ pub async fn verify_tables(pool: &DatabasePool) -> Result<()> {
         .context("Failed to query feed_log table - check SELECT permissions")?;
 
     // Test write permissions by attempting a transaction that we'll rollback
-    let mut tx = pool.begin().await.context("Failed to begin test transaction")?;
-    
+    let mut tx = pool
+        .begin()
+        .await
+        .context("Failed to begin test transaction")?;
+
     sqlx::query(
         "INSERT INTO feed_log (feed_name, network_name, feed_value, feed_timestamp) 
-         VALUES ($1, $2, $3, $4)"
+         VALUES ($1, $2, $3, $4)",
     )
     .bind("_test_feed")
     .bind("_test_network")
@@ -131,12 +134,14 @@ pub async fn verify_tables(pool: &DatabasePool) -> Result<()> {
     .execute(&mut *tx)
     .await
     .context("Failed to test INSERT permission on feed_log table")?;
-    
+
     // Rollback the test insert
-    tx.rollback().await.context("Failed to rollback test transaction")?;
+    tx.rollback()
+        .await
+        .context("Failed to rollback test transaction")?;
 
     info!("All required tables exist and are accessible");
     debug!("Verified tables: feed_log, transaction_log, gas_price_log");
-    
+
     Ok(())
 }

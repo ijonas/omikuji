@@ -115,6 +115,9 @@ impl PriceProvider for CoinGeckoProvider {
             .await
             .map_err(|e| PriceFetchError::ParseError(e.to_string()))?;
 
+        // Log the raw response for debugging
+        info!("CoinGecko API response: {:?}", data);
+
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -132,13 +135,16 @@ impl PriceProvider for CoinGeckoProvider {
 
                 prices.push(GasTokenPrice {
                     token_id: token_id.clone(),
-                    symbol,
+                    symbol: symbol.clone(),
                     price_usd: price_data.usd,
                     timestamp,
                     source: self.name().to_string(),
                 });
 
-                info!("Fetched price for {}: ${:.2}", token_id, price_data.usd);
+                info!(
+                    "Fetched price for {} ({}): ${:.2} USD",
+                    token_id, symbol, price_data.usd
+                );
             } else {
                 warn!("No price data found for token: {}", token_id);
             }

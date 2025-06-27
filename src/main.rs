@@ -236,11 +236,12 @@ async fn main() -> Result<()> {
                     // Check if we should skip migrations
                     let skip_migrations = std::env::var("SKIP_MIGRATIONS")
                         .unwrap_or_else(|_| "false".to_string())
-                        .to_lowercase() == "true";
+                        .to_lowercase()
+                        == "true";
 
                     if skip_migrations {
                         info!("SKIP_MIGRATIONS is set, skipping database migrations");
-                        
+
                         // Verify tables exist and are accessible
                         match database::connection::verify_tables(&pool).await {
                             Ok(_) => {

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod alert_metrics;
 pub mod config_manager;
 pub mod config_metrics;

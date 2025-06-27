@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod cache;
 pub mod manager;
 pub mod models;
