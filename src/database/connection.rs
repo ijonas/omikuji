@@ -58,3 +58,85 @@ pub async fn run_migrations(pool: &DatabasePool) -> Result<()> {
 
     Ok(())
 }
+
+/// Verify that required database tables exist and are accessible
+pub async fn verify_tables(pool: &DatabasePool) -> Result<()> {
+    info!("Verifying database tables accessibility");
+
+    // Check feed_log table
+    let feed_log_exists: (bool,) = sqlx::query_as(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'feed_log'
+        )"
+    )
+    .fetch_one(pool)
+    .await
+    .context("Failed to check if feed_log table exists")?;
+
+    if !feed_log_exists.0 {
+        return Err(anyhow::anyhow!("Table 'feed_log' does not exist"));
+    }
+
+    // Check transaction_log table
+    let transaction_log_exists: (bool,) = sqlx::query_as(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'transaction_log'
+        )"
+    )
+    .fetch_one(pool)
+    .await
+    .context("Failed to check if transaction_log table exists")?;
+
+    if !transaction_log_exists.0 {
+        return Err(anyhow::anyhow!("Table 'transaction_log' does not exist"));
+    }
+
+    // Check gas_price_log table
+    let gas_price_log_exists: (bool,) = sqlx::query_as(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'gas_price_log'
+        )"
+    )
+    .fetch_one(pool)
+    .await
+    .context("Failed to check if gas_price_log table exists")?;
+
+    if !gas_price_log_exists.0 {
+        return Err(anyhow::anyhow!("Table 'gas_price_log' does not exist"));
+    }
+
+    // Test write access to feed_log table
+    sqlx::query("SELECT COUNT(*) FROM feed_log LIMIT 1")
+        .fetch_one(pool)
+        .await
+        .context("Failed to query feed_log table - check SELECT permissions")?;
+
+    // Test write permissions by attempting a transaction that we'll rollback
+    let mut tx = pool.begin().await.context("Failed to begin test transaction")?;
+    
+    sqlx::query(
+        "INSERT INTO feed_log (feed_name, network_name, feed_value, feed_timestamp) 
+         VALUES ($1, $2, $3, $4)"
+    )
+    .bind("_test_feed")
+    .bind("_test_network")
+    .bind(0.0)
+    .bind(0i64)
+    .execute(&mut *tx)
+    .await
+    .context("Failed to test INSERT permission on feed_log table")?;
+    
+    // Rollback the test insert
+    tx.rollback().await.context("Failed to rollback test transaction")?;
+
+    info!("All required tables exist and are accessible");
+    debug!("Verified tables: feed_log, transaction_log, gas_price_log");
+    
+    Ok(())
+}

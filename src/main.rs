@@ -233,16 +233,44 @@ async fn main() -> Result<()> {
                 Ok(pool) => {
                     info!("Database connection established successfully");
 
-                    // Run migrations
-                    if let Err(e) = database::connection::run_migrations(&pool).await {
-                        error!("Failed to run database migrations: {}", e);
-                        error!("Continuing without database support");
-                        ConfigMetrics::set_database_status(false);
-                        None
+                    // Check if we should skip migrations
+                    let skip_migrations = std::env::var("SKIP_MIGRATIONS")
+                        .unwrap_or_else(|_| "false".to_string())
+                        .to_lowercase() == "true";
+
+                    if skip_migrations {
+                        info!("SKIP_MIGRATIONS is set, skipping database migrations");
+                        
+                        // Verify tables exist and are accessible
+                        match database::connection::verify_tables(&pool).await {
+                            Ok(_) => {
+                                info!("Database tables verified successfully");
+                                info!("Database initialized with feed logging and transaction tracking enabled");
+                                ConfigMetrics::set_database_status(true);
+                                Some(pool)
+                            }
+                            Err(e) => {
+                                error!("Database tables are not accessible: {}", e);
+                                error!("Please ensure the required tables exist (feed_log, transaction_log, gas_price_log)");
+                                error!("Continuing without database support");
+                                ConfigMetrics::set_database_status(false);
+                                None
+                            }
+                        }
                     } else {
-                        info!("Database initialized with feed logging and transaction tracking enabled");
-                        ConfigMetrics::set_database_status(true);
-                        Some(pool)
+                        // Run migrations as normal
+                        if let Err(e) = database::connection::run_migrations(&pool).await {
+                            error!("Failed to run database migrations: {}", e);
+                            error!("You can skip migrations by setting SKIP_MIGRATIONS=true");
+                            error!("Continuing without database support");
+                            ConfigMetrics::set_database_status(false);
+                            None
+                        } else {
+                            info!("Database migrations completed successfully");
+                            info!("Database initialized with feed logging and transaction tracking enabled");
+                            ConfigMetrics::set_database_status(true);
+                            Some(pool)
+                        }
                     }
                 }
                 Err(e) => {
