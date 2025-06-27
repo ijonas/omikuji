@@ -63,7 +63,7 @@ fn default_cleanup_schedule() -> String {
 /// Configuration for key storage
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct KeyStorageConfig {
-    /// Storage type: "keyring" or "env" (default: "env" for backward compatibility)
+    /// Storage type: "keyring", "env", "vault", or "aws-secrets" (default: "env" for backward compatibility)
     #[serde(default = "default_key_storage_type")]
     #[validate(custom = "validate_key_storage_type")]
     pub storage_type: String,
@@ -71,6 +71,14 @@ pub struct KeyStorageConfig {
     /// Keyring configuration (only used when storage_type is "keyring")
     #[serde(default)]
     pub keyring: KeyringConfig,
+
+    /// Vault configuration (only used when storage_type is "vault")
+    #[serde(default)]
+    pub vault: VaultConfig,
+
+    /// AWS Secrets Manager configuration (only used when storage_type is "aws-secrets")
+    #[serde(default)]
+    pub aws_secrets: AwsSecretsConfig,
 }
 
 impl Default for KeyStorageConfig {
@@ -78,6 +86,8 @@ impl Default for KeyStorageConfig {
         Self {
             storage_type: default_key_storage_type(),
             keyring: KeyringConfig::default(),
+            vault: VaultConfig::default(),
+            aws_secrets: AwsSecretsConfig::default(),
         }
     }
 }
@@ -98,6 +108,71 @@ impl Default for KeyringConfig {
     }
 }
 
+/// Vault-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultConfig {
+    /// Vault server URL
+    #[serde(default = "default_vault_url")]
+    pub url: String,
+
+    /// Mount path for KV v2 secrets engine (default: "secret")
+    #[serde(default = "default_vault_mount_path")]
+    pub mount_path: String,
+
+    /// Path prefix for secrets (e.g., "omikuji")
+    #[serde(default = "default_vault_path_prefix")]
+    pub path_prefix: String,
+
+    /// Authentication method: "token" or "approle"
+    #[serde(default = "default_vault_auth_method")]
+    pub auth_method: String,
+
+    /// Token for authentication (can use ${VAULT_TOKEN} for env var)
+    pub token: Option<String>,
+
+    /// Cache TTL in seconds (default: 300)
+    #[serde(default = "default_cache_ttl")]
+    pub cache_ttl_seconds: u64,
+}
+
+impl Default for VaultConfig {
+    fn default() -> Self {
+        Self {
+            url: default_vault_url(),
+            mount_path: default_vault_mount_path(),
+            path_prefix: default_vault_path_prefix(),
+            auth_method: default_vault_auth_method(),
+            token: None,
+            cache_ttl_seconds: default_cache_ttl(),
+        }
+    }
+}
+
+/// AWS Secrets Manager configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AwsSecretsConfig {
+    /// AWS region (optional, will use default AWS config if not specified)
+    pub region: Option<String>,
+
+    /// Secret name prefix (e.g., "omikuji/")
+    #[serde(default = "default_aws_prefix")]
+    pub prefix: String,
+
+    /// Cache TTL in seconds (default: 300)
+    #[serde(default = "default_cache_ttl")]
+    pub cache_ttl_seconds: u64,
+}
+
+impl Default for AwsSecretsConfig {
+    fn default() -> Self {
+        Self {
+            region: None,
+            prefix: default_aws_prefix(),
+            cache_ttl_seconds: default_cache_ttl(),
+        }
+    }
+}
+
 fn default_key_storage_type() -> String {
     "env".to_string()
 }
@@ -106,11 +181,35 @@ fn default_keyring_service() -> String {
     "omikuji".to_string()
 }
 
+fn default_vault_url() -> String {
+    "https://vault.example.com".to_string()
+}
+
+fn default_vault_mount_path() -> String {
+    "secret".to_string()
+}
+
+fn default_vault_path_prefix() -> String {
+    "omikuji".to_string()
+}
+
+fn default_vault_auth_method() -> String {
+    "token".to_string()
+}
+
+fn default_aws_prefix() -> String {
+    "omikuji/".to_string()
+}
+
+fn default_cache_ttl() -> u64 {
+    300
+}
+
 fn validate_key_storage_type(storage_type: &str) -> Result<(), ValidationError> {
     match storage_type {
-        "keyring" | "env" => Ok(()),
+        "keyring" | "env" | "vault" | "aws-secrets" => Ok(()),
         _ => Err(ValidationError::new(
-            "storage_type must be either 'keyring' or 'env'",
+            "storage_type must be 'keyring', 'env', 'vault', or 'aws-secrets'",
         )),
     }
 }

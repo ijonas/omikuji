@@ -113,6 +113,8 @@ async fn import_key(
     file: Option<PathBuf>,
     service: Option<String>,
 ) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
+    // For Vault or AWS Secrets Manager, configure in omikuji.yaml and keys will be loaded automatically.
     let storage = KeyringStorage::new(service);
 
     let private_key = match (key, file) {
@@ -147,6 +149,7 @@ async fn import_key(
 }
 
 async fn list_keys(service: Option<String>) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
     let _storage = KeyringStorage::new(service);
 
     // Since keyring doesn't support listing, we'll need to check common networks
@@ -159,6 +162,7 @@ async fn list_keys(service: Option<String>) -> Result<()> {
 }
 
 async fn remove_key(network: String, service: Option<String>) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
     let storage = KeyringStorage::new(service);
 
     // Confirm removal
@@ -181,6 +185,7 @@ async fn remove_key(network: String, service: Option<String>) -> Result<()> {
 }
 
 async fn export_key(network: String, service: Option<String>) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
     let storage = KeyringStorage::new(service);
 
     // Confirm export

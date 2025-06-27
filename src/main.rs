@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use tracing::{debug, error, info, warn};
 
@@ -108,7 +108,9 @@ async fn main() -> Result<()> {
     };
 
     // Load wallets based on key storage configuration
-    use crate::wallet::key_storage::{EnvVarStorage, KeyringStorage};
+    use crate::wallet::key_storage::{
+        AwsSecretsStorage, EnvVarStorage, KeyringStorage, VaultStorage,
+    };
 
     let key_storage: Box<dyn KeyStorage> = match config.key_storage.storage_type.as_str() {
         "keyring" => {
@@ -118,8 +120,55 @@ async fn main() -> Result<()> {
             )))
         }
         "env" => {
-            info!("Using environment variables for key storage (consider migrating to keyring)");
+            info!("Using environment variables for key storage (consider migrating to vault/aws-secrets for production)");
             Box::new(EnvVarStorage::new())
+        }
+        "vault" => {
+            info!("Using HashiCorp Vault for key storage");
+            let vault_config = &config.key_storage.vault;
+
+            // Handle token from environment variable if specified
+            let token = vault_config.token.as_ref().and_then(|t| {
+                if t.starts_with("${") && t.ends_with("}") {
+                    let var_name = &t[2..t.len() - 1];
+                    std::env::var(var_name).ok()
+                } else {
+                    Some(t.clone())
+                }
+            });
+
+            let vault_storage = VaultStorage::new(
+                &vault_config.url,
+                &vault_config.mount_path,
+                &vault_config.path_prefix,
+                &vault_config.auth_method,
+                token,
+                Some(vault_config.cache_ttl_seconds),
+            )
+            .await
+            .context("Failed to initialize Vault storage")?;
+
+            // Start cache cleanup task
+            vault_storage.start_cache_cleanup().await;
+
+            Box::new(vault_storage)
+        }
+        "aws-secrets" => {
+            info!("Using AWS Secrets Manager for key storage");
+            let aws_config = &config.key_storage.aws_secrets;
+
+            let aws_storage = AwsSecretsStorage::new(
+                aws_config.region.clone(),
+                &aws_config.prefix,
+                Some(aws_config.cache_ttl_seconds),
+            )
+            .await
+            .context("Failed to initialize AWS Secrets Manager storage")?;
+
+            // Start cache cleanup task
+            aws_storage.start_cache_cleanup().await;
+
+            Box::new(aws_storage)
         }
         _ => {
             error!(

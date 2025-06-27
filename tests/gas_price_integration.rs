@@ -201,6 +201,8 @@ fn create_test_config() -> OmikujiConfig {
             keyring: omikuji::config::models::KeyringConfig {
                 service: "omikuji".to_string(),
             },
+            vault: omikuji::config::models::VaultConfig::default(),
+            aws_secrets: omikuji::config::models::AwsSecretsConfig::default(),
         },
         metrics: MetricsConfig::default(),
         gas_price_feeds: GasPriceFeedConfig {

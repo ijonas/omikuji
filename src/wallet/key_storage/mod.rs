@@ -2,13 +2,17 @@ use anyhow::Result;
 use async_trait::async_trait;
 use secrecy::SecretString;
 
+pub mod aws_secrets;
 pub mod env;
 pub mod keyring;
 #[cfg(test)]
 mod tests;
+pub mod vault;
 
+pub use aws_secrets::AwsSecretsStorage;
 pub use env::EnvVarStorage;
 pub use keyring::KeyringStorage;
+pub use vault::VaultStorage;
 
 #[async_trait]
 pub trait KeyStorage: Send + Sync {
