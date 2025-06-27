@@ -32,7 +32,7 @@ Key storage is configured in your `omikuji.yaml` file:
 ```yaml
 key_storage:
   # Choose one: "keyring", "vault", "aws-secrets", or "env"
-  backend: "keyring"
+  storage_type: "keyring"
   
   # Backend-specific configuration
   keyring:
@@ -151,7 +151,7 @@ vault write -f auth/approle/role/omikuji/secret-id
 
 ```yaml
 key_storage:
-  backend: "vault"
+  storage_type: "vault"
   vault:
     url: "https://vault.example.com:8200"
     mount_path: "secret"
@@ -217,7 +217,7 @@ Create an IAM policy for Omikuji:
 ```yaml
 # No explicit credentials needed - uses instance profile
 key_storage:
-  backend: "aws-secrets"
+  storage_type: "aws-secrets"
   aws_secrets:
     prefix: "omikuji"
     cache_ttl_seconds: 300
@@ -238,7 +238,7 @@ export AWS_REGION="us-east-1"
 
 ```yaml
 key_storage:
-  backend: "aws-secrets"
+  storage_type: "aws-secrets"
   aws_secrets:
     region: "us-east-1"  # Optional
     prefix: "omikuji"
@@ -281,7 +281,7 @@ For development or CI/CD pipelines, you can use environment variables:
 
 ```yaml
 key_storage:
-  backend: "env"
+  storage_type: "env"
 ```
 
 Set environment variables for each network:
