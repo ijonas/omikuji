@@ -112,3 +112,7 @@ For comprehensive project documentation, see:
 - [Architecture Reference](docs/reference/architecture.md) - System design details
 - [Configuration Reference](docs/reference/configuration.md) - All configuration options
 - [Contributing Guide](docs/development/contributing.md) - Development guidelines
+
+## Claude Interactions
+
+- Run afplay /System/Library/Sounds/Glass.aiff (or any other system sound) at the end of tasks, or when my input is needed to proceed with a task.
