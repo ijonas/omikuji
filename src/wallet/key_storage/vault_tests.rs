@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::wallet::key_storage::KeyStorage;
-    use secrecy::{ExposeSecret, SecretString};
+
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::RwLock;
@@ -181,7 +179,7 @@ mod tests {
             ("plain_key", "plain_key"), // Plain text fallback
         ];
 
-        for (input, expected) in test_cases {
+        for (_input, expected) in test_cases {
             // In real implementation, this would test parse_secret_value method
             // For now, we just verify the test data structure
             assert!(!expected.is_empty());

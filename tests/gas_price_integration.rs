@@ -104,7 +104,7 @@ async fn test_gas_price_cache_fallback() {
     // Verify cache statistics
     let (cache_size, cache_ttl) = gas_price_manager.cache_stats().await;
     assert_eq!(cache_size, 0, "Cache should start empty");
-    assert_eq!(cache_ttl, 600, "Cache TTL should match config");
+    assert_eq!(cache_ttl, 60, "Cache TTL should match update frequency");
 
     // Test getting prices for multiple networks
     let networks = vec![
@@ -209,7 +209,6 @@ fn create_test_config() -> OmikujiConfig {
             enabled: true,
             update_frequency: 60,
             provider: "coingecko".to_string(),
-            cache_ttl: 600,
             fallback_to_cache: true,
             persist_to_database: false,
             coingecko: CoinGeckoConfig {

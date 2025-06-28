@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::wallet::key_storage::KeyStorage;
-    use secrecy::{ExposeSecret, SecretString};
+
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Arc;

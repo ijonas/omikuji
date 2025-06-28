@@ -120,7 +120,6 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(config.update_frequency, 3600);
         assert_eq!(config.provider, "coingecko");
-        assert_eq!(config.cache_ttl, 600);
         assert!(config.fallback_to_cache);
         assert!(!config.persist_to_database);
     }
