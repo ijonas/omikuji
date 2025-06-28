@@ -91,7 +91,7 @@ impl WalletBalanceMonitor {
                 let native_token_price = if let Some(ref gas_price_manager) = self.gas_price_manager
                 {
                     if let Some(price_info) = gas_price_manager.get_price(network_name).await {
-                        info!(
+                        debug!(
                             "Got price for {} from gas price manager: ${:.2} USD (token: {})",
                             network_name, price_info.price_usd, price_info.symbol
                         );
@@ -129,7 +129,7 @@ impl WalletBalanceMonitor {
                     EconomicMetrics::update_daily_spending_rate(network_name, daily_spend);
                 }
 
-                info!(
+                debug!(
                     "Updated wallet balance for {} on {}: {} wei ({:.6} native tokens, ${:.2} USD @ ${:.2}/token)",
                     address,
                     network_name,
