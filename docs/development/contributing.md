@@ -10,10 +10,16 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
 ### Prerequisites
 
-- Rust 1.70 or higher
+- Rust stable (latest version recommended)
 - Git
 - A GitHub account
 - Familiarity with Rust and blockchain concepts
+
+**Important**: Keep your Rust toolchain updated to match GitHub Actions CI:
+```bash
+rustup update stable
+rustup component add clippy rustfmt
+```
 
 ### Development Setup
 

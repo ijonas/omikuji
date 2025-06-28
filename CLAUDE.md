@@ -85,6 +85,10 @@ cargo test -- --nocapture
 ### Code Quality
 
 ```bash
+# IMPORTANT: Keep Rust updated to match GitHub Actions
+rustup update stable
+rustup component add clippy rustfmt
+
 # Check code formatting
 cargo fmt --check
 

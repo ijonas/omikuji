@@ -202,11 +202,7 @@ impl ContractMetrics {
 
     /// Record a nonce gap
     pub fn record_nonce_gap(network: &str, expected: u64, actual: u64) {
-        let gap = if actual > expected {
-            actual - expected
-        } else {
-            expected - actual
-        };
+        let gap = actual.abs_diff(expected);
 
         let severity = match gap {
             1 => "minor",
