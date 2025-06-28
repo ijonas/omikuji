@@ -80,6 +80,15 @@ cargo test <test_name>
 
 # Run tests with output
 cargo test -- --nocapture
+
+# Generate code coverage report
+make coverage
+
+# Generate LCOV coverage report (for CI)
+make coverage-lcov
+
+# Install coverage tools
+make install-coverage-tools
 ```
 
 ### Code Quality
@@ -138,4 +147,3 @@ For comprehensive project documentation, see:
 
 ## Claude Interactions
 
-- Run afplay /System/Library/Sounds/Glass.aiff (or any other system sound) at the end of tasks, or when my input is needed to proceed with a task.
