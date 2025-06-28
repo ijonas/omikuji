@@ -3,9 +3,8 @@
 # Gas price feed configuration for USD cost tracking
 gas_price_feeds:
   enabled: true
-  update_frequency: 3600  # Update prices every hour
+  update_frequency: 3600  # Update prices every hour (also determines cache duration)
   provider: "coingecko"   # Currently only coingecko is supported
-  cache_ttl: 600          # Cache prices for 10 minutes
   fallback_to_cache: true # Use cached prices if API fails
   persist_to_database: true # Store price history in database
   

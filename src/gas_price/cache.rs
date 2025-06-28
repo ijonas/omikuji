@@ -12,6 +12,8 @@ pub struct PriceCache {
     entries: Arc<RwLock<HashMap<String, CacheEntry>>>,
     /// Cache TTL in seconds
     ttl_seconds: u64,
+    /// Whether to allow returning expired entries
+    fallback_to_cache: bool,
 }
 
 /// Individual cache entry
@@ -25,14 +27,30 @@ struct CacheEntry {
 impl PriceCache {
     /// Create a new price cache with the given TTL
     pub fn new(ttl_seconds: u64) -> Self {
+        Self::with_options(ttl_seconds, false)
+    }
+
+    /// Create a new price cache with options
+    pub fn with_options(ttl_seconds: u64, fallback_to_cache: bool) -> Self {
         Self {
             entries: Arc::new(RwLock::new(HashMap::new())),
             ttl_seconds,
+            fallback_to_cache,
         }
     }
 
     /// Get a price from the cache
     pub async fn get(&self, token_id: &str) -> Option<GasTokenPrice> {
+        self.get_with_options(token_id, self.fallback_to_cache)
+            .await
+    }
+
+    /// Get a price from the cache with options
+    pub async fn get_with_options(
+        &self,
+        token_id: &str,
+        allow_expired: bool,
+    ) -> Option<GasTokenPrice> {
         let entries = self.entries.read().await;
 
         if let Some(entry) = entries.get(token_id) {
@@ -43,6 +61,13 @@ impl PriceCache {
 
             if now - entry.inserted_at <= self.ttl_seconds {
                 debug!("Cache hit for token {}", token_id);
+                return Some(entry.price.clone());
+            } else if allow_expired {
+                debug!(
+                    "Cache entry expired for token {} but returning stale value (age: {}s)",
+                    token_id,
+                    now - entry.inserted_at
+                );
                 return Some(entry.price.clone());
             } else {
                 debug!("Cache entry expired for token {}", token_id);

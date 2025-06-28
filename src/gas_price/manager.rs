@@ -27,7 +27,10 @@ impl GasPriceManager {
         token_mappings: HashMap<String, String>,
         db_repo: Option<Arc<TransactionLogRepository>>,
     ) -> Self {
-        let cache = Arc::new(PriceCache::new(config.cache_ttl));
+        let cache = Arc::new(PriceCache::with_options(
+            config.update_frequency,
+            config.fallback_to_cache,
+        ));
 
         let mut providers: Vec<Box<dyn PriceProvider>> = Vec::new();
 
@@ -83,6 +86,17 @@ impl GasPriceManager {
                 if let Err(e) = manager_clone.update_prices().await {
                     error!("Failed to update gas prices: {}", e);
                 }
+            }
+        });
+
+        // Start staleness monitoring (update metrics every 30 seconds)
+        let manager_staleness = self.clone();
+        tokio::spawn(async move {
+            let mut interval = interval(Duration::from_secs(30));
+
+            loop {
+                interval.tick().await;
+                manager_staleness.update_staleness_metrics().await;
             }
         });
     }
@@ -217,7 +231,8 @@ impl GasPriceManager {
 
     /// Update Prometheus metrics
     async fn update_metrics(&self, prices: &[GasTokenPrice]) {
-        use crate::metrics::gas_metrics::GAS_TOKEN_PRICE_USD;
+        use crate::metrics::gas_metrics::{GAS_PRICE_STALENESS_SECONDS, GAS_TOKEN_PRICE_USD};
+        use std::time::{SystemTime, UNIX_EPOCH};
 
         let mappings = self.token_mappings.read().await;
         let reverse_mappings: HashMap<&str, Vec<&str>> =
@@ -230,12 +245,24 @@ impl GasPriceManager {
                     acc
                 });
 
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
         for price in prices {
             if let Some(networks) = reverse_mappings.get(price.token_id.as_str()) {
                 for network in networks {
+                    // Update price metric
                     GAS_TOKEN_PRICE_USD
                         .with_label_values(&[network, &price.symbol])
                         .set(price.price_usd);
+
+                    // Update staleness metric (time since price was fetched)
+                    let staleness = now.saturating_sub(price.timestamp) as f64;
+                    GAS_PRICE_STALENESS_SECONDS
+                        .with_label_values(&[network, &price.symbol])
+                        .set(staleness);
                 }
             }
         }
@@ -249,6 +276,36 @@ impl GasPriceManager {
     /// Get cache statistics
     pub async fn cache_stats(&self) -> (usize, u64) {
         let size = self.cache.size().await;
-        (size, self.config.cache_ttl)
+        (size, self.config.update_frequency)
+    }
+
+    /// Update staleness metrics for all cached prices
+    async fn update_staleness_metrics(&self) {
+        use crate::metrics::gas_metrics::GAS_PRICE_STALENESS_SECONDS;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let mappings = self.token_mappings.read().await;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Check staleness for each network
+        for (network, token_id) in mappings.iter() {
+            if let Some(price) = self.cache.get(token_id).await {
+                let staleness = now.saturating_sub(price.timestamp) as f64;
+                GAS_PRICE_STALENESS_SECONDS
+                    .with_label_values(&[network, &price.symbol])
+                    .set(staleness);
+
+                // Warn if price is getting stale (over 80% of update frequency)
+                if staleness > (self.config.update_frequency as f64 * 0.8) {
+                    warn!(
+                        "Gas price for {} ({}) is getting stale: {}s old (update frequency: {}s)",
+                        network, price.symbol, staleness, self.config.update_frequency
+                    );
+                }
+            }
+        }
     }
 }

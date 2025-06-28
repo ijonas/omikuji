@@ -22,6 +22,7 @@ pub struct GasPriceFeedConfig {
     #[serde(default)]
     pub enabled: bool,
     /// Update frequency in seconds (default: 3600 - 1 hour)
+    /// This also determines how long prices are cached
     #[serde(default = "default_update_frequency")]
     pub update_frequency: u64,
     /// Price provider to use (default: "coingecko")
@@ -30,9 +31,6 @@ pub struct GasPriceFeedConfig {
     /// CoinGecko-specific configuration
     #[serde(default)]
     pub coingecko: CoinGeckoConfig,
-    /// Cache TTL in seconds (default: 600 - 10 minutes)
-    #[serde(default = "default_cache_ttl")]
-    pub cache_ttl: u64,
     /// Whether to fallback to cached prices on fetch failure
     #[serde(default = "default_fallback_to_cache")]
     pub fallback_to_cache: bool,
@@ -110,10 +108,6 @@ fn default_provider() -> String {
     "coingecko".to_string()
 }
 
-fn default_cache_ttl() -> u64 {
-    600 // 10 minutes
-}
-
 fn default_fallback_to_cache() -> bool {
     true
 }
@@ -129,7 +123,6 @@ impl Default for GasPriceFeedConfig {
             update_frequency: default_update_frequency(),
             provider: default_provider(),
             coingecko: CoinGeckoConfig::default(),
-            cache_ttl: default_cache_ttl(),
             fallback_to_cache: default_fallback_to_cache(),
             persist_to_database: false,
         }
