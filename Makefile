@@ -98,6 +98,40 @@ outdated:
 audit:
 	cargo audit
 
+# Generate code coverage report (requires grcov)
+coverage:
+	@echo "Cleaning previous coverage data..."
+	@rm -f *.profraw
+	@cargo clean
+	@echo "Building with coverage instrumentation..."
+	@CARGO_INCREMENTAL=0 RUSTFLAGS='-Cinstrument-coverage' LLVM_PROFILE_FILE='cargo-test-%p-%m.profraw' cargo build
+	@echo "Running tests with coverage..."
+	@CARGO_INCREMENTAL=0 RUSTFLAGS='-Cinstrument-coverage' LLVM_PROFILE_FILE='cargo-test-%p-%m.profraw' cargo test
+	@echo "Generating coverage report..."
+	@grcov . --binary-path ./target/debug/deps/ -s . -t html --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o ./target/coverage
+	@echo "Coverage report generated at ./target/coverage/index.html"
+
+# Generate coverage report in lcov format
+coverage-lcov:
+	@echo "Cleaning previous coverage data..."
+	@rm -f *.profraw
+	@cargo clean
+	@echo "Building with coverage instrumentation..."
+	@CARGO_INCREMENTAL=0 RUSTFLAGS='-Cinstrument-coverage' LLVM_PROFILE_FILE='cargo-test-%p-%m.profraw' cargo build
+	@echo "Running tests with coverage..."
+	@CARGO_INCREMENTAL=0 RUSTFLAGS='-Cinstrument-coverage' LLVM_PROFILE_FILE='cargo-test-%p-%m.profraw' cargo test
+	@echo "Generating lcov coverage report..."
+	@grcov . --binary-path ./target/debug/deps/ -s . -t lcov --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o coverage.lcov
+	@echo "Coverage report generated at coverage.lcov"
+
+# Install coverage tools
+install-coverage-tools:
+	@echo "Installing grcov..."
+	@cargo install grcov
+	@echo "Installing llvm-tools..."
+	@rustup component add llvm-tools-preview
+	@echo "Coverage tools installed!"
+
 # Development mode with auto-reload (requires cargo-watch)
 watch:
 	cargo watch -x run
@@ -169,6 +203,9 @@ help:
 	@echo "  make update       - Update dependencies"
 	@echo "  make outdated     - Check for outdated dependencies"
 	@echo "  make audit        - Run security audit"
+	@echo "  make coverage     - Generate HTML code coverage report"
+	@echo "  make coverage-lcov - Generate LCOV code coverage report"
+	@echo "  make install-coverage-tools - Install grcov and llvm-tools"
 	@echo "  make watch        - Run with auto-reload (needs cargo-watch)"
 	@echo "  make debug        - Run with debug logging"
 	@echo "  make trace        - Run with trace logging"

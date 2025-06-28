@@ -1,5 +1,7 @@
 # Omikuji - a lightweight EVM blockchain datafeed provider
 
+[![codecov](https://codecov.io/gh/ijonas/omikuji/branch/main/graph/badge.svg)](https://codecov.io/gh/ijonas/omikuji)
+
 Omikuji is a software daemon, written in Rust, that provides external off-chain data to EVM blockchains such as Ethereum and BASE.
 
 Some may call it a [blockchain oracle](https://en.wikipedia.org/wiki/Blockchain_oracle)

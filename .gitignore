@@ -4,4 +4,9 @@
 
 .env
 config.yaml
-config.yaml
+
+# Code coverage files
+*.profraw
+*.profdata
+coverage.lcov
+/target/coverage/
