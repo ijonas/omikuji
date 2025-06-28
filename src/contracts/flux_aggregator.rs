@@ -2,6 +2,7 @@ use crate::config::models::Network as NetworkConfig;
 use crate::database::TransactionLogRepository;
 use crate::gas::GasEstimate;
 use crate::metrics::gas_metrics::{GasMetrics, TransactionDetails};
+use crate::metrics::ContractMetrics;
 use alloy::{
     network::{Ethereum, TransactionBuilder},
     primitives::{Address, I256, U256},
@@ -13,6 +14,7 @@ use alloy::{
 };
 use anyhow::Result;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::time::Duration;
 use tracing::{error, info, warn};
 
@@ -56,26 +58,115 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
 
     /// Get the latest answer from the contract
     pub async fn latest_answer(&self) -> Result<I256> {
+        self.latest_answer_with_metrics(None, None).await
+    }
+
+    /// Get the latest answer from the contract with metrics
+    pub async fn latest_answer_with_metrics(
+        &self,
+        feed_name: Option<&str>,
+        network: Option<&str>,
+    ) -> Result<I256> {
+        let start = Instant::now();
         let call = IFluxAggregator::latestAnswerCall {};
         let tx = TransactionRequest::default()
             .to(self.address)
             .input(call.abi_encode().into());
-        let result = self.provider.call(&tx).block(BlockId::latest()).await?;
 
-        let decoded = IFluxAggregator::latestAnswerCall::abi_decode_returns(&result, true)?;
-        Ok(decoded._0)
+        match self.provider.call(&tx).block(BlockId::latest()).await {
+            Ok(result) => {
+                let duration = start.elapsed();
+
+                // Record metrics if context is provided
+                if let (Some(feed), Some(net)) = (feed_name, network) {
+                    ContractMetrics::record_contract_read(
+                        feed,
+                        net,
+                        "latestAnswer",
+                        true,
+                        duration,
+                        None,
+                    );
+                }
+
+                let decoded = IFluxAggregator::latestAnswerCall::abi_decode_returns(&result, true)?;
+                Ok(decoded._0)
+            }
+            Err(e) => {
+                let duration = start.elapsed();
+
+                // Record metrics if context is provided
+                if let (Some(feed), Some(net)) = (feed_name, network) {
+                    ContractMetrics::record_contract_read(
+                        feed,
+                        net,
+                        "latestAnswer",
+                        false,
+                        duration,
+                        Some(&e.to_string()),
+                    );
+                }
+
+                Err(e.into())
+            }
+        }
     }
 
     /// Get the latest timestamp
     pub async fn latest_timestamp(&self) -> Result<U256> {
+        self.latest_timestamp_with_metrics(None, None).await
+    }
+
+    /// Get the latest timestamp with metrics
+    pub async fn latest_timestamp_with_metrics(
+        &self,
+        feed_name: Option<&str>,
+        network: Option<&str>,
+    ) -> Result<U256> {
+        let start = Instant::now();
         let call = IFluxAggregator::latestTimestampCall {};
         let tx = TransactionRequest::default()
             .to(self.address)
             .input(call.abi_encode().into());
-        let result = self.provider.call(&tx).block(BlockId::latest()).await?;
 
-        let decoded = IFluxAggregator::latestTimestampCall::abi_decode_returns(&result, true)?;
-        Ok(decoded._0)
+        match self.provider.call(&tx).block(BlockId::latest()).await {
+            Ok(result) => {
+                let duration = start.elapsed();
+
+                // Record metrics if context is provided
+                if let (Some(feed), Some(net)) = (feed_name, network) {
+                    ContractMetrics::record_contract_read(
+                        feed,
+                        net,
+                        "latestTimestamp",
+                        true,
+                        duration,
+                        None,
+                    );
+                }
+
+                let decoded =
+                    IFluxAggregator::latestTimestampCall::abi_decode_returns(&result, true)?;
+                Ok(decoded._0)
+            }
+            Err(e) => {
+                let duration = start.elapsed();
+
+                // Record metrics if context is provided
+                if let (Some(feed), Some(net)) = (feed_name, network) {
+                    ContractMetrics::record_contract_read(
+                        feed,
+                        net,
+                        "latestTimestamp",
+                        false,
+                        duration,
+                        Some(&e.to_string()),
+                    );
+                }
+
+                Err(e.into())
+            }
+        }
     }
 
     /// Get the latest round
@@ -236,18 +327,55 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
 
             info!("Sending transaction (attempt {})", attempt);
 
+            // Record contract write attempt
+            let write_start = Instant::now();
+
             // Send transaction
             let pending_tx = match self.provider.send_transaction(tx.clone()).await {
                 Ok(tx) => tx,
                 Err(e) => {
+                    let write_duration = write_start.elapsed();
                     error!("Failed to send transaction: {}", e);
+
+                    // Record failed contract write
+                    ContractMetrics::record_contract_write(
+                        feed_name,
+                        &network_config.name,
+                        false,
+                        write_duration,
+                        None,
+                    );
+
+                    // Check for specific error types
+                    let error_str = e.to_string();
+                    if error_str.contains("revert") {
+                        ContractMetrics::record_transaction_revert(
+                            feed_name,
+                            &network_config.name,
+                            &error_str,
+                        );
+                    }
+
                     if attempt >= max_attempts {
+                        ContractMetrics::record_transaction_retry(
+                            feed_name,
+                            &network_config.name,
+                            "max_attempts_reached",
+                            attempt as u32,
+                        );
                         return Err(anyhow::anyhow!(
                             "Failed to send transaction after {} attempts: {}",
-                            attempt,
+                            attempt as u32,
                             e
                         ));
                     }
+
+                    ContractMetrics::record_transaction_retry(
+                        feed_name,
+                        &network_config.name,
+                        "send_error",
+                        attempt as u32,
+                    );
                     continue;
                 }
             };
@@ -258,6 +386,12 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
             // Wait for confirmation with timeout
             let wait_duration = Duration::from_secs(fee_bumping.initial_wait_seconds);
 
+            // Record transaction submission time
+            let submission_time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
             match tokio::time::timeout(
                 wait_duration,
                 pending_tx.with_required_confirmations(1).get_receipt(),
@@ -265,7 +399,29 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
             .await
             {
                 Ok(Ok(receipt)) => {
+                    let write_duration = write_start.elapsed();
                     info!("Transaction confirmed: 0x{:x}", tx_hash);
+
+                    // Record successful contract write
+                    ContractMetrics::record_contract_write(
+                        feed_name,
+                        &network_config.name,
+                        true,
+                        write_duration,
+                        Some(&format!("0x{tx_hash:x}")),
+                    );
+
+                    // Record confirmation time
+                    let confirmation_time = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    ContractMetrics::record_confirmation_time(
+                        feed_name,
+                        &network_config.name,
+                        submission_time,
+                        confirmation_time,
+                    );
 
                     // Record gas metrics
                     GasMetrics::record_transaction(
@@ -311,7 +467,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                     if attempt >= max_attempts {
                         return Err(anyhow::anyhow!(
                             "Transaction failed after {} attempts: {}",
-                            attempt,
+                            attempt as u32,
                             e
                         ));
                     }
@@ -364,7 +520,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
         let total_cost_wei = U256::from(gas_used) * gas_estimate.gas_price.unwrap_or(U256::ZERO);
 
         let details = TransactionDetails {
-            tx_hash: format!("0x{:x}", tx_hash),
+            tx_hash: format!("0x{tx_hash:x}"),
             feed_name: feed_name.to_string(),
             network: network_name.to_string(),
             gas_limit: gas_limit.to::<u64>(),

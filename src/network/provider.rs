@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
 use alloy::{
     primitives::Address,
@@ -14,6 +15,7 @@ use tracing::{error, info};
 use url::Url;
 
 use crate::config::models::Network;
+use crate::metrics::NetworkMetrics;
 use crate::wallet::key_storage::KeyStorage;
 
 /// Errors that can occur when interacting with network providers
@@ -88,7 +90,7 @@ impl NetworkManager {
         }
 
         let private_key = std::env::var(env_var)
-            .with_context(|| format!("Environment variable {} not found", env_var))?;
+            .with_context(|| format!("Environment variable {env_var} not found"))?;
 
         info!(
             "Successfully read private key from env var {} (length: {})",
@@ -123,11 +125,6 @@ impl NetworkManager {
         network_name: &str,
         key_storage: &dyn KeyStorage,
     ) -> Result<()> {
-        info!(
-            "Loading wallet from key storage for network {}",
-            network_name
-        );
-
         // Check if the network exists
         if !self.providers.contains_key(network_name) {
             return Err(NetworkError::NetworkNotFound(network_name.to_string()).into());
@@ -136,7 +133,7 @@ impl NetworkManager {
         let private_key_secret = key_storage
             .get_key(network_name)
             .await
-            .with_context(|| format!("Failed to retrieve key for network {}", network_name))?;
+            .with_context(|| format!("Failed to retrieve key for network {network_name}"))?;
 
         let private_key = private_key_secret.expose_secret();
 
@@ -163,24 +160,72 @@ impl NetworkManager {
 
     /// Get the chain ID for a given network
     pub async fn get_chain_id(&self, network_name: &str) -> Result<u64> {
+        let start = Instant::now();
         let provider = self.get_provider(network_name)?;
-        let chain_id = provider
-            .get_chain_id()
-            .await
-            .with_context(|| format!("Failed to get chain ID for network {}", network_name))?;
 
-        Ok(chain_id)
+        match provider.get_chain_id().await {
+            Ok(chain_id) => {
+                let duration = start.elapsed();
+                NetworkMetrics::record_rpc_request(
+                    network_name,
+                    "eth_chainId",
+                    true,
+                    duration,
+                    None,
+                );
+                Ok(chain_id)
+            }
+            Err(e) => {
+                let duration = start.elapsed();
+                let error_type = NetworkMetrics::classify_rpc_error(&e.to_string());
+                NetworkMetrics::record_rpc_request(
+                    network_name,
+                    "eth_chainId",
+                    false,
+                    duration,
+                    Some(error_type),
+                );
+                Err(e).with_context(|| format!("Failed to get chain ID for network {network_name}"))
+            }
+        }
     }
 
     /// Get the block number for a given network
     pub async fn get_block_number(&self, network_name: &str) -> Result<u64> {
+        let start = Instant::now();
         let provider = self.get_provider(network_name)?;
-        let block_number = provider
-            .get_block_number()
-            .await
-            .with_context(|| format!("Failed to get block number for network {}", network_name))?;
 
-        Ok(block_number)
+        match provider.get_block_number().await {
+            Ok(block_number) => {
+                let duration = start.elapsed();
+                NetworkMetrics::record_rpc_request(
+                    network_name,
+                    "eth_blockNumber",
+                    true,
+                    duration,
+                    None,
+                );
+
+                // Update chain head metric
+                NetworkMetrics::update_chain_head(network_name, block_number);
+
+                Ok(block_number)
+            }
+            Err(e) => {
+                let duration = start.elapsed();
+                let error_type = NetworkMetrics::classify_rpc_error(&e.to_string());
+                NetworkMetrics::record_rpc_request(
+                    network_name,
+                    "eth_blockNumber",
+                    false,
+                    duration,
+                    Some(error_type),
+                );
+                Err(e).with_context(|| {
+                    format!("Failed to get block number for network {network_name}")
+                })
+            }
+        }
     }
 
     /// Get a provider for a given network
@@ -245,13 +290,19 @@ impl NetworkManager {
     /// Create a provider from an RPC URL
     async fn create_provider(rpc_url: &str) -> Result<EthProvider> {
         let url =
-            Url::parse(rpc_url).with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
+            Url::parse(rpc_url).with_context(|| format!("Failed to parse RPC URL: {rpc_url}"))?;
 
         let provider = ProviderBuilder::new().on_http(url);
 
         // Test connection by getting the current block number
+        let start = Instant::now();
         match provider.get_block_number().await {
             Ok(block_number) => {
+                let _duration = start.elapsed();
+
+                // Update endpoint health metric
+                NetworkMetrics::update_endpoint_health("unknown", rpc_url, true);
+
                 info!(
                     "Connected to RPC at {}, current block: {}",
                     rpc_url, block_number
@@ -259,6 +310,11 @@ impl NetworkManager {
                 Ok(provider)
             }
             Err(err) => {
+                let _duration = start.elapsed();
+
+                // Update endpoint health metric
+                NetworkMetrics::update_endpoint_health("unknown", rpc_url, false);
+
                 error!("Failed to connect to RPC at {}: {}", rpc_url, err);
                 Err(NetworkError::ConnectionFailed(err.to_string()).into())
             }

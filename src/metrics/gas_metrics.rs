@@ -51,6 +51,55 @@ lazy_static! {
         "Gas limit set for transactions",
         &["feed_name", "network"]
     ).expect("Failed to create gas_limit gauge");
+
+    /// Current gas token price in USD
+    pub static ref GAS_TOKEN_PRICE_USD: GaugeVec = register_gauge_vec!(
+        "omikuji_gas_token_price_usd",
+        "Current price per gas token in USD",
+        &["network", "token_symbol"]
+    ).expect("Failed to create gas_token_price_usd metric");
+
+    /// Cumulative gas cost in USD
+    static ref CUMULATIVE_GAS_COST_USD: CounterVec = register_counter_vec!(
+        "omikuji_cumulative_gas_cost_usd",
+        "Running total cost in USD",
+        &["network", "feed_name"]
+    ).expect("Failed to create cumulative_gas_cost_usd metric");
+
+    /// Hourly gas cost in USD
+    static ref HOURLY_GAS_COST_USD: GaugeVec = register_gauge_vec!(
+        "omikuji_hourly_gas_cost_usd",
+        "Gas cost per hour in USD",
+        &["network", "feed_name"]
+    ).expect("Failed to create hourly_gas_cost_usd metric");
+
+    /// Daily gas cost in USD
+    static ref DAILY_GAS_COST_USD: GaugeVec = register_gauge_vec!(
+        "omikuji_daily_gas_cost_usd",
+        "Gas cost per day in USD",
+        &["network", "feed_name"]
+    ).expect("Failed to create daily_gas_cost_usd metric");
+
+    /// Gas price feed updates counter
+    pub static ref GAS_PRICE_FEED_UPDATES_TOTAL: CounterVec = register_counter_vec!(
+        "omikuji_gas_price_feed_updates_total",
+        "Total number of gas price feed updates",
+        &["provider", "status"]
+    ).expect("Failed to create gas_price_feed_updates_total metric");
+
+    /// Gas price feed errors counter
+    pub static ref GAS_PRICE_FEED_ERRORS_TOTAL: CounterVec = register_counter_vec!(
+        "omikuji_gas_price_feed_errors_total",
+        "Total number of gas price feed errors",
+        &["provider", "error_type"]
+    ).expect("Failed to create gas_price_feed_errors_total metric");
+
+    /// Gas price staleness in seconds
+    pub static ref GAS_PRICE_STALENESS_SECONDS: GaugeVec = register_gauge_vec!(
+        "omikuji_gas_price_staleness_seconds",
+        "Time since last gas price update in seconds",
+        &["network", "token_symbol"]
+    ).expect("Failed to create gas_price_staleness_seconds metric");
 }
 
 /// Gas metrics collector
@@ -170,6 +219,47 @@ impl GasMetrics {
             Gas Limit: {}, Error: {}",
             feed_name, network, gas_limit, error
         );
+    }
+
+    /// Record gas cost in USD
+    pub fn record_usd_cost(
+        feed_name: &str,
+        network: &str,
+        gas_used: u64,
+        gas_price_wei: u128,
+        gas_token_price_usd: f64,
+    ) {
+        // Calculate cost in USD
+        let gas_cost_native = (gas_used as f64 * gas_price_wei as f64) / 1e18;
+        let total_cost_usd = gas_cost_native * gas_token_price_usd;
+
+        // Update cumulative cost
+        CUMULATIVE_GAS_COST_USD
+            .with_label_values(&[network, feed_name])
+            .inc_by(total_cost_usd);
+
+        info!(
+            "Transaction cost in USD - Feed: {}, Network: {}, \
+            Gas Used: {}, Gas Price: {} wei, Token Price: ${:.2}, \
+            Total Cost: ${:.6}",
+            feed_name, network, gas_used, gas_price_wei, gas_token_price_usd, total_cost_usd
+        );
+    }
+
+    /// Update hourly and daily cost gauges (to be called periodically)
+    pub fn update_cost_gauges(
+        feed_name: &str,
+        network: &str,
+        hourly_cost_usd: f64,
+        daily_cost_usd: f64,
+    ) {
+        HOURLY_GAS_COST_USD
+            .with_label_values(&[network, feed_name])
+            .set(hourly_cost_usd);
+
+        DAILY_GAS_COST_USD
+            .with_label_values(&[network, feed_name])
+            .set(daily_cost_usd);
     }
 }
 

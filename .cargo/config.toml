@@ -1,0 +1,12 @@
+[build]
+# Set the default target if needed
+# target = "x86_64-unknown-linux-gnu"
+
+# Note: We don't set global rustflags here to match GitHub Actions behavior exactly
+# GitHub Actions uses command-line flags, not config-based flags
+
+[alias]
+# Create convenient aliases that match GitHub Actions
+ci-check = "clippy -- -D warnings -D clippy::uninlined_format_args"
+ci-fix = "clippy --fix --allow-dirty -- -D warnings -D clippy::uninlined_format_args"
+ci-lint = "run --package omikuji --bin lint"

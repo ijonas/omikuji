@@ -1,0 +1,30 @@
+# Clippy configuration to match GitHub Actions CI
+
+# Set the minimum supported Rust version
+msrv = "1.70.0"
+
+# Configure cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Configure line length for various lints
+too-many-arguments-threshold = 7
+too-many-lines-threshold = 200
+type-complexity-threshold = 250
+
+# Allow common patterns
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true
+
+# Don't enforce documentation for all items (GitHub Actions doesn't require this)
+missing-docs-in-crate-items = false
+
+# Standard formatting
+enum-variant-name-threshold = 3
+single-char-binding-names-threshold = 3
+
+# Note: Most clippy configuration happens via command-line flags to match GitHub Actions
+# The main flags used in CI are:
+# - -D warnings (deny all warnings)
+# - -D clippy::uninlined_format_args (require inline format arguments)

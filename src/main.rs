@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 mod cli;
 mod config;
@@ -10,6 +10,7 @@ mod contracts;
 mod database;
 mod datafeed;
 mod gas;
+mod gas_price;
 mod metrics;
 mod network;
 mod ui;
@@ -40,9 +41,9 @@ async fn main() -> Result<()> {
     let version = format!("Omikuji v{}", env!("CARGO_PKG_VERSION"));
     // The ASCII art is 100 chars wide, so center the version string
     let width = 100;
-    let version_line = format!("{:^width$}", version, width = width);
+    let version_line = format!("{version:^width$}");
     let welcome = ui::welcome_screen::WELCOME_SCREEN.replace("{version_line}", &version_line);
-    println!("{}", welcome);
+    println!("{welcome}");
 
     // Initialize logging after argument parsing
     tracing_subscriber::fmt::init();
@@ -68,6 +69,13 @@ async fn main() -> Result<()> {
             return Err(anyhow::anyhow!("Configuration error: {}", e));
         }
     };
+
+    // Initialize metrics configuration
+    use crate::metrics::{init_metrics_config, ConfigMetrics};
+    init_metrics_config(config.metrics.clone());
+
+    // Record configuration metrics
+    ConfigMetrics::record_startup_info(&config);
 
     // Display loaded configuration
     info!(
@@ -100,7 +108,9 @@ async fn main() -> Result<()> {
     };
 
     // Load wallets based on key storage configuration
-    use crate::wallet::key_storage::{EnvVarStorage, KeyringStorage};
+    use crate::wallet::key_storage::{
+        AwsSecretsStorage, EnvVarStorage, KeyringStorage, VaultStorage,
+    };
 
     let key_storage: Box<dyn KeyStorage> = match config.key_storage.storage_type.as_str() {
         "keyring" => {
@@ -110,8 +120,55 @@ async fn main() -> Result<()> {
             )))
         }
         "env" => {
-            info!("Using environment variables for key storage (consider migrating to keyring)");
+            info!("Using environment variables for key storage (consider migrating to vault/aws-secrets for production)");
             Box::new(EnvVarStorage::new())
+        }
+        "vault" => {
+            info!("Using HashiCorp Vault for key storage");
+            let vault_config = &config.key_storage.vault;
+
+            // Handle token from environment variable if specified
+            let token = vault_config.token.as_ref().and_then(|t| {
+                if t.starts_with("${") && t.ends_with("}") {
+                    let var_name = &t[2..t.len() - 1];
+                    std::env::var(var_name).ok()
+                } else {
+                    Some(t.clone())
+                }
+            });
+
+            let vault_storage = VaultStorage::new(
+                &vault_config.url,
+                &vault_config.mount_path,
+                &vault_config.path_prefix,
+                &vault_config.auth_method,
+                token,
+                Some(vault_config.cache_ttl_seconds),
+            )
+            .await
+            .context("Failed to initialize Vault storage")?;
+
+            // Start cache cleanup task
+            vault_storage.start_cache_cleanup().await;
+
+            Box::new(vault_storage)
+        }
+        "aws-secrets" => {
+            info!("Using AWS Secrets Manager for key storage");
+            let aws_config = &config.key_storage.aws_secrets;
+
+            let aws_storage = AwsSecretsStorage::new(
+                aws_config.region.clone(),
+                &aws_config.prefix,
+                Some(aws_config.cache_ttl_seconds),
+            )
+            .await
+            .context("Failed to initialize AWS Secrets Manager storage")?;
+
+            // Start cache cleanup task
+            aws_storage.start_cache_cleanup().await;
+
+            Box::new(aws_storage)
         }
         _ => {
             error!(
@@ -128,30 +185,35 @@ async fn main() -> Result<()> {
             .await
         {
             Ok(_) => {
-                info!("Loaded wallet for network {}", network.name);
+                info!("Successfully loaded wallet for network {}", network.name);
             }
             Err(e) => {
                 // For backward compatibility, try environment variable if keyring fails
                 if config.key_storage.storage_type == "keyring" {
-                    info!(
+                    debug!(
                         "Keyring lookup failed for network {}, trying environment variable",
                         network.name
                     );
-                    if network_manager
+
+                    match network_manager
                         .load_wallet_from_env(&network.name, &cli.private_key_env)
                         .await
-                        .is_ok()
                     {
-                        info!(
-                            "Loaded wallet for network {} from environment variable",
-                            network.name
-                        );
-                        continue;
+                        Ok(_) => {
+                            info!(
+                                "Successfully loaded wallet for network {} from environment variable",
+                                network.name
+                            );
+                            continue;
+                        }
+                        Err(env_err) => {
+                            debug!("Failed to load from env var: {:?}", env_err);
+                        }
                     }
                 }
 
                 error!("Failed to load wallet for network {}: {}", network.name, e);
-                error!(
+                warn!(
                     "Transactions on {} network will not be possible",
                     network.name
                 );
@@ -171,19 +233,51 @@ async fn main() -> Result<()> {
                 Ok(pool) => {
                     info!("Database connection established successfully");
 
-                    // Run migrations
-                    if let Err(e) = database::connection::run_migrations(&pool).await {
-                        error!("Failed to run database migrations: {}", e);
-                        error!("Continuing without database support");
-                        None
+                    // Check if we should skip migrations
+                    let skip_migrations = std::env::var("SKIP_MIGRATIONS")
+                        .unwrap_or_else(|_| "false".to_string())
+                        .to_lowercase()
+                        == "true";
+
+                    if skip_migrations {
+                        info!("SKIP_MIGRATIONS is set, skipping database migrations");
+
+                        // Verify tables exist and are accessible
+                        match database::connection::verify_tables(&pool).await {
+                            Ok(_) => {
+                                info!("Database tables verified successfully");
+                                info!("Database initialized with feed logging and transaction tracking enabled");
+                                ConfigMetrics::set_database_status(true);
+                                Some(pool)
+                            }
+                            Err(e) => {
+                                error!("Database tables are not accessible: {}", e);
+                                error!("Please ensure the required tables exist (feed_log, transaction_log, gas_price_log)");
+                                error!("Continuing without database support");
+                                ConfigMetrics::set_database_status(false);
+                                None
+                            }
+                        }
                     } else {
-                        info!("Database initialized with feed logging and transaction tracking enabled");
-                        Some(pool)
+                        // Run migrations as normal
+                        if let Err(e) = database::connection::run_migrations(&pool).await {
+                            error!("Failed to run database migrations: {}", e);
+                            error!("You can skip migrations by setting SKIP_MIGRATIONS=true");
+                            error!("Continuing without database support");
+                            ConfigMetrics::set_database_status(false);
+                            None
+                        } else {
+                            info!("Database migrations completed successfully");
+                            info!("Database initialized with feed logging and transaction tracking enabled");
+                            ConfigMetrics::set_database_status(true);
+                            Some(pool)
+                        }
                     }
                 }
                 Err(e) => {
                     error!("Failed to establish database connection: {}", e);
                     error!("Continuing without database logging");
+                    ConfigMetrics::set_database_status(false);
                     None
                 }
             }
@@ -191,6 +285,7 @@ async fn main() -> Result<()> {
         Err(_) => {
             info!("DATABASE_URL not set - running without database logging");
             info!("To enable database logging, set DATABASE_URL environment variable");
+            ConfigMetrics::set_database_status(false);
             None
         }
     };
@@ -211,12 +306,56 @@ async fn main() -> Result<()> {
         None
     };
 
+    // Initialize gas price manager
+    let gas_price_manager = if config.gas_price_feeds.enabled {
+        info!("Initializing gas price feed manager");
+
+        // Build token mappings from network configurations
+        let mut token_mappings = std::collections::HashMap::new();
+        for network in &config.networks {
+            token_mappings.insert(network.name.clone(), network.gas_token.clone());
+        }
+
+        // Create transaction repository if database is available
+        let tx_repo = database_pool.as_ref().map(|pool| {
+            Arc::new(database::transaction_repository::TransactionLogRepository::new(pool.clone()))
+        });
+
+        let gas_price_manager = Arc::new(gas_price::GasPriceManager::new(
+            config.gas_price_feeds.clone(),
+            token_mappings,
+            tx_repo,
+        ));
+
+        // Start the price update loop
+        gas_price_manager.clone().start().await;
+
+        Some(gas_price_manager)
+    } else {
+        info!("Gas price feeds are disabled");
+        None
+    };
+
     // Initialize and start datafeed monitoring
     let mut feed_manager = if let Some(pool) = database_pool {
-        datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
-            .with_repository(pool)
+        let mut manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
+            .with_repository(pool);
+
+        // Add gas price manager if available
+        if let Some(ref gas_price_manager) = gas_price_manager {
+            manager = manager.with_gas_price_manager(Arc::clone(gas_price_manager));
+        }
+
+        manager
     } else {
-        datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
+        let mut manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager));
+
+        // Add gas price manager if available
+        if let Some(ref gas_price_manager) = gas_price_manager {
+            manager = manager.with_gas_price_manager(Arc::clone(gas_price_manager));
+        }
+
+        manager
     };
 
     feed_manager.start().await;
@@ -227,10 +366,16 @@ async fn main() -> Result<()> {
         error!("Continuing without metrics endpoint");
     } else {
         info!("Prometheus metrics available at http://0.0.0.0:9090/metrics");
+
+        // Update metrics server status
+        ConfigMetrics::set_metrics_server_status(true, 9090);
     }
 
     // Start wallet balance monitor
-    let wallet_monitor = wallet::WalletBalanceMonitor::new(Arc::clone(&network_manager));
+    let mut wallet_monitor = wallet::WalletBalanceMonitor::new(Arc::clone(&network_manager));
+    if let Some(ref gas_price_manager) = gas_price_manager {
+        wallet_monitor = wallet_monitor.with_gas_price_manager(Arc::clone(gas_price_manager));
+    }
     tokio::spawn(async move {
         wallet_monitor.start().await;
     });

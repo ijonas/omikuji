@@ -85,6 +85,10 @@ cargo test -- --nocapture
 ### Code Quality
 
 ```bash
+# IMPORTANT: Keep Rust updated to match GitHub Actions
+rustup update stable
+rustup component add clippy rustfmt
+
 # Check code formatting
 cargo fmt --check
 
@@ -96,6 +100,25 @@ cargo clippy
 
 # Check for common mistakes and improvements
 cargo clippy -- -D warnings
+
+# Run linting with GitHub Actions CI settings
+./scripts/lint.sh
+
+# Or use the Makefile commands
+make lint         # Run all linting checks (matches CI)
+make lint-fix     # Automatically fix issues where possible
+make check        # Run linting + tests
+make ci-check     # Run exact CI pipeline locally
+
+# Run clippy with CI settings directly
+cargo clippy -- -D warnings -D clippy::uninlined_format_args
+
+# Fix clippy issues automatically where possible
+cargo clippy --fix --allow-dirty -- -D warnings -D clippy::uninlined_format_args
+
+# Use cargo aliases (defined in .cargo/config.toml)
+cargo ci-check    # Run clippy with CI settings
+cargo ci-fix      # Fix issues with CI settings
 ```
 
 ### Documentation
@@ -112,3 +135,7 @@ For comprehensive project documentation, see:
 - [Architecture Reference](docs/reference/architecture.md) - System design details
 - [Configuration Reference](docs/reference/configuration.md) - All configuration options
 - [Contributing Guide](docs/development/contributing.md) - Development guidelines
+
+## Claude Interactions
+
+- Run afplay /System/Library/Sounds/Glass.aiff (or any other system sound) at the end of tasks, or when my input is needed to proceed with a task.

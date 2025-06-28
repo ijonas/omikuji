@@ -43,8 +43,32 @@ lint:
 lint-strict:
 	cargo clippy -- -D warnings
 
+# Run clippy with GitHub Actions CI settings (includes uninlined_format_args)
+lint-ci:
+	cargo clippy -- -D warnings -D clippy::uninlined_format_args
+
+# Run full CI-style linting (format check + clippy with CI settings)
+ci-lint:
+	@./scripts/lint.sh
+
+# Fix linting issues automatically where possible
+lint-fix:
+	@echo "Fixing code formatting..."
+	@cargo fmt
+	@echo "Fixing clippy issues..."
+	@cargo clippy --fix --allow-dirty -- -D warnings -D clippy::uninlined_format_args
+	@echo "Done! Run 'make ci-lint' to check remaining issues."
+
 # Run all checks (format, lint, test)
 check: fmt-check lint test
+
+# Run exact CI checks (matches GitHub Actions)
+ci-check:
+	@echo "Running CI checks locally..."
+	cargo fmt -- --check
+	cargo clippy -- -D warnings
+	cargo test --verbose
+	cargo build --verbose
 
 # Build optimized release version
 release:
@@ -133,7 +157,11 @@ help:
 	@echo "  make fmt-check    - Check code formatting"
 	@echo "  make lint         - Run clippy linter"
 	@echo "  make lint-strict  - Run clippy with strict warnings"
+	@echo "  make lint-ci      - Run clippy with GitHub Actions CI settings"
+	@echo "  make ci-lint      - Run full CI-style linting checks"
+	@echo "  make lint-fix     - Fix linting issues automatically"
 	@echo "  make check        - Run all checks (format, lint, test)"
+	@echo "  make ci-check     - Run exact CI pipeline locally"
 	@echo "  make release      - Build optimized release"
 	@echo "  make run-release  - Run release version"
 	@echo "  make doc          - Generate documentation"

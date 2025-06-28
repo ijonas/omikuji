@@ -1,14 +1,18 @@
-use crate::metrics::FeedMetrics;
+use crate::gas_price::GasPriceManager;
+use crate::metrics::{EconomicMetrics, FeedMetrics};
 use crate::network::NetworkManager;
-use alloy::primitives::utils::format_units;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Monitors wallet balances across all networks
 pub struct WalletBalanceMonitor {
     network_manager: Arc<NetworkManager>,
+    gas_price_manager: Option<Arc<GasPriceManager>>,
     update_interval_seconds: u64,
+    /// Track daily spending for runway calculation (network -> daily spend in USD)
+    daily_spending_estimates: HashMap<String, f64>,
 }
 
 impl WalletBalanceMonitor {
@@ -16,8 +20,16 @@ impl WalletBalanceMonitor {
     pub fn new(network_manager: Arc<NetworkManager>) -> Self {
         Self {
             network_manager,
+            gas_price_manager: None,
             update_interval_seconds: 60, // Default to 1 minute
+            daily_spending_estimates: HashMap::new(),
         }
+    }
+
+    /// Set the gas price manager
+    pub fn with_gas_price_manager(mut self, gas_price_manager: Arc<GasPriceManager>) -> Self {
+        self.gas_price_manager = Some(gas_price_manager);
+        self
     }
 
     /// Start monitoring wallet balances
@@ -66,20 +78,61 @@ impl WalletBalanceMonitor {
         match provider.get_balance(address).await {
             Ok(balance) => {
                 let balance_wei = balance.to::<u128>();
+                let balance_native = balance_wei as f64 / 1e18; // Convert to native units
 
-                // Update Prometheus metric
-                FeedMetrics::set_wallet_balance(
+                // Update basic balance metric
+                FeedMetrics::set_wallet_balance(network_name, &format!("{address:?}"), balance_wei);
+
+                // Get native token price from gas price manager if available
+                let native_token_price = if let Some(ref gas_price_manager) = self.gas_price_manager
+                {
+                    if let Some(price_info) = gas_price_manager.get_price(network_name).await {
+                        debug!(
+                            "Got price for {} from gas price manager: ${:.2} USD (token: {})",
+                            network_name, price_info.price_usd, price_info.symbol
+                        );
+                        price_info.price_usd
+                    } else {
+                        warn!(
+                            "No price available for {} from gas price manager, using default $1.0",
+                            network_name
+                        );
+                        1.0 // Default if price not available
+                    }
+                } else {
+                    debug!("No gas price manager configured, using default price $1.0");
+                    1.0 // Default price if no gas price manager
+                };
+
+                // Update economic metrics
+                EconomicMetrics::update_wallet_balance_usd(
                     network_name,
-                    &format!("{:?}", address),
-                    balance_wei,
+                    &format!("{address:?}"),
+                    balance_native,
+                    native_token_price,
                 );
 
+                // Update runway if we have spending data
+                if let Some(&daily_spend) = self.daily_spending_estimates.get(network_name) {
+                    let balance_usd = balance_native * native_token_price;
+                    EconomicMetrics::update_runway_days(
+                        network_name,
+                        &format!("{address:?}"),
+                        balance_usd,
+                        daily_spend,
+                    );
+
+                    EconomicMetrics::update_daily_spending_rate(network_name, daily_spend);
+                }
+
                 debug!(
-                    "Updated wallet balance for {} on {}: {} wei ({} ETH)",
+                    "Updated wallet balance for {} on {}: {} wei ({:.6} native tokens, ${:.2} USD @ ${:.2}/token)",
                     address,
                     network_name,
                     balance_wei,
-                    format_units(balance, "ether").unwrap_or_else(|_| "error".to_string())
+                    balance_native,
+                    balance_native * native_token_price,
+                    native_token_price
                 );
 
                 Ok(())

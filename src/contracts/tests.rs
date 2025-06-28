@@ -4,11 +4,10 @@ mod tests {
     use alloy::{
         node_bindings::Anvil,
         primitives::{Address, I256, U256},
-        providers::{Provider, ProviderBuilder, RootProvider},
+        providers::{ProviderBuilder, RootProvider},
         sol_types::SolCall,
         transports::http::{Client, Http},
     };
-    use std::sync::Arc;
 
     // Helper to deploy a mock FluxAggregator for testing
     // In real tests, you'd deploy an actual contract on a test network
@@ -46,7 +45,7 @@ mod tests {
         };
 
         // Create contract instance
-        let contract = FluxAggregatorContract::new(contract_address, provider);
+        let _contract = FluxAggregatorContract::new(contract_address, provider);
 
         // The contract instance is created successfully
         // We can't directly access the address field as it's private
@@ -61,7 +60,7 @@ mod tests {
                 return;
             }
         };
-        let contract = FluxAggregatorContract::new(contract_address, provider);
+        let _contract = FluxAggregatorContract::new(contract_address, provider);
 
         // Test that method call data can be encoded
         let decimals_call = IFluxAggregator::decimalsCall {};

@@ -22,8 +22,7 @@ impl JsonExtractor {
         for (index, component) in components.iter().enumerate() {
             current = current.get(component).with_context(|| {
                 format!(
-                    "Failed to extract path component '{}' at position {} in path '{}'",
-                    component, index, path
+                    "Failed to extract path component '{component}' at position {index} in path '{path}'"
                 )
             })?;
         }
@@ -32,10 +31,10 @@ impl JsonExtractor {
         match current {
             Value::Number(n) => n
                 .as_f64()
-                .with_context(|| format!("Failed to convert number to f64 at path '{}'", path)),
-            Value::String(s) => s.parse::<f64>().with_context(|| {
-                format!("Failed to parse string '{}' as f64 at path '{}'", s, path)
-            }),
+                .with_context(|| format!("Failed to convert number to f64 at path '{path}'")),
+            Value::String(s) => s
+                .parse::<f64>()
+                .with_context(|| format!("Failed to parse string '{s}' as f64 at path '{path}'")),
             _ => {
                 anyhow::bail!(
                     "Value at path '{}' is not a number or string, found: {:?}",

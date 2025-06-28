@@ -13,7 +13,7 @@ use tracing::warn;
 pub fn parse_address(address_str: &str) -> Result<Address> {
     address_str
         .parse::<Address>()
-        .with_context(|| format!("Invalid contract address: {}", address_str))
+        .with_context(|| format!("Invalid contract address: {address_str}"))
 }
 
 /// Creates a FluxAggregator contract instance with a provider

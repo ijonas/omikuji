@@ -1,3 +1,4 @@
+pub mod metrics_config;
 pub mod models;
 pub mod parser;
 #[cfg(test)]

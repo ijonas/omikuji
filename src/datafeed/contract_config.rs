@@ -50,7 +50,7 @@ impl<'a> ContractConfigReader<'a> {
         let provider = self
             .network_manager
             .get_provider(network_name)
-            .with_context(|| format!("Failed to get provider for network: {}", network_name))?;
+            .with_context(|| format!("Failed to get provider for network: {network_name}"))?;
 
         // Create contract instance
         let contract = create_contract_with_provider(address, provider.as_ref().clone());

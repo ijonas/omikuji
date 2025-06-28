@@ -113,6 +113,8 @@ async fn import_key(
     file: Option<PathBuf>,
     service: Option<String>,
 ) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
+    // For Vault or AWS Secrets Manager, configure in omikuji.yaml and keys will be loaded automatically.
     let storage = KeyringStorage::new(service);
 
     let private_key = match (key, file) {
@@ -123,19 +125,28 @@ async fn import_key(
         }
         (None, None) => {
             // Prompt for key input
-            println!("Enter private key for network '{}': ", network);
+            println!("Enter private key for network '{network}': ");
             let key = rpassword::prompt_password("")?;
             SecretString::from(key)
         }
     };
 
     storage.store_key(&network, private_key).await?;
-    println!("Successfully imported key for network '{}'", network);
+    println!("Successfully imported key for network '{network}'");
+
+    // Verify the key was stored (important for detecting non-persistent backends)
+    match storage.get_key(&network).await {
+        Ok(_) => {}
+        Err(e) => {
+            println!("WARNING: Key was stored but verification failed. Error: {e}");
+        }
+    }
 
     Ok(())
 }
 
 async fn list_keys(service: Option<String>) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
     let _storage = KeyringStorage::new(service);
 
     // Since keyring doesn't support listing, we'll need to check common networks
@@ -148,13 +159,11 @@ async fn list_keys(service: Option<String>) -> Result<()> {
 }
 
 async fn remove_key(network: String, service: Option<String>) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
     let storage = KeyringStorage::new(service);
 
     // Confirm removal
-    println!(
-        "Are you sure you want to remove the key for network '{}'? (y/N): ",
-        network
-    );
+    println!("Are you sure you want to remove the key for network '{network}'? (y/N): ");
     let mut response = String::new();
     std::io::stdin().read_line(&mut response)?;
 
@@ -164,20 +173,18 @@ async fn remove_key(network: String, service: Option<String>) -> Result<()> {
     }
 
     storage.remove_key(&network).await?;
-    println!("Successfully removed key for network '{}'", network);
+    println!("Successfully removed key for network '{network}'");
 
     Ok(())
 }
 
 async fn export_key(network: String, service: Option<String>) -> Result<()> {
+    // Note: CLI key commands use OS keyring by default.
     let storage = KeyringStorage::new(service);
 
     // Confirm export
     println!("WARNING: This will display your private key!");
-    println!(
-        "Are you sure you want to export the key for network '{}'? (y/N): ",
-        network
-    );
+    println!("Are you sure you want to export the key for network '{network}'? (y/N): ");
     let mut response = String::new();
     std::io::stdin().read_line(&mut response)?;
 
@@ -209,16 +216,16 @@ async fn migrate_keys(service: Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    println!("Found keys for networks: {:?}", networks);
+    println!("Found keys for networks: {networks:?}");
     println!("Migrating keys from environment variables to keyring...");
 
     for network in networks {
         match env_storage.get_key(&network).await {
             Ok(key) => match keyring_storage.store_key(&network, key).await {
-                Ok(_) => println!("✓ Migrated key for network '{}'", network),
-                Err(e) => println!("✗ Failed to migrate key for network '{}': {}", network, e),
+                Ok(_) => println!("✓ Migrated key for network '{network}'"),
+                Err(e) => println!("✗ Failed to migrate key for network '{network}': {e}"),
             },
-            Err(e) => println!("✗ Failed to read key for network '{}': {}", network, e),
+            Err(e) => println!("✗ Failed to read key for network '{network}': {e}"),
         }
     }
 
