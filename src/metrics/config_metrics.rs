@@ -111,7 +111,7 @@ impl ConfigMetrics {
                 contract_type,
                 contract_address,
                 &check_frequency.to_string(),
-                &format!("{:.2}", deviation_threshold),
+                &format!("{deviation_threshold:.2}"),
                 &minimum_update_frequency.to_string(),
             ])
             .set(1.0);
@@ -132,7 +132,7 @@ impl ConfigMetrics {
                 network,
                 &sanitized_url,
                 transaction_type,
-                &format!("{:.2}", gas_multiplier),
+                &format!("{gas_multiplier:.2}"),
             ])
             .set(1.0);
     }

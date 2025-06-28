@@ -408,7 +408,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
                         &network_config.name,
                         true,
                         write_duration,
-                        Some(&format!("0x{:x}", tx_hash)),
+                        Some(&format!("0x{tx_hash:x}")),
                     );
 
                     // Record confirmation time
@@ -520,7 +520,7 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
         let total_cost_wei = U256::from(gas_used) * gas_estimate.gas_price.unwrap_or(U256::ZERO);
 
         let details = TransactionDetails {
-            tx_hash: format!("0x{:x}", tx_hash),
+            tx_hash: format!("0x{tx_hash:x}"),
             feed_name: feed_name.to_string(),
             network: network_name.to_string(),
             gas_limit: gas_limit.to::<u64>(),

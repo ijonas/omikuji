@@ -90,7 +90,7 @@ impl NetworkManager {
         }
 
         let private_key = std::env::var(env_var)
-            .with_context(|| format!("Environment variable {} not found", env_var))?;
+            .with_context(|| format!("Environment variable {env_var} not found"))?;
 
         info!(
             "Successfully read private key from env var {} (length: {})",
@@ -133,7 +133,7 @@ impl NetworkManager {
         let private_key_secret = key_storage
             .get_key(network_name)
             .await
-            .with_context(|| format!("Failed to retrieve key for network {}", network_name))?;
+            .with_context(|| format!("Failed to retrieve key for network {network_name}"))?;
 
         let private_key = private_key_secret.expose_secret();
 
@@ -185,8 +185,7 @@ impl NetworkManager {
                     duration,
                     Some(error_type),
                 );
-                Err(e)
-                    .with_context(|| format!("Failed to get chain ID for network {}", network_name))
+                Err(e).with_context(|| format!("Failed to get chain ID for network {network_name}"))
             }
         }
     }
@@ -223,7 +222,7 @@ impl NetworkManager {
                     Some(error_type),
                 );
                 Err(e).with_context(|| {
-                    format!("Failed to get block number for network {}", network_name)
+                    format!("Failed to get block number for network {network_name}")
                 })
             }
         }
@@ -291,7 +290,7 @@ impl NetworkManager {
     /// Create a provider from an RPC URL
     async fn create_provider(rpc_url: &str) -> Result<EthProvider> {
         let url =
-            Url::parse(rpc_url).with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
+            Url::parse(rpc_url).with_context(|| format!("Failed to parse RPC URL: {rpc_url}"))?;
 
         let provider = ProviderBuilder::new().on_http(url);
 

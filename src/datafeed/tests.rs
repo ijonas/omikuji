@@ -148,7 +148,6 @@ mod tests {
 
     mod fetcher_tests {
         use crate::datafeed::fetcher::Fetcher;
-        use mockito;
 
         #[tokio::test]
         async fn test_fetch_json_success() {

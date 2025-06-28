@@ -104,8 +104,7 @@ impl PriceProvider for CoinGeckoProvider {
                 .unwrap_or_else(|_| "Unable to read response body".to_string());
             error!("CoinGecko API error: {} - {}", status, body);
             return Err(PriceFetchError::ProviderError(format!(
-                "HTTP {}: {}",
-                status, body
+                "HTTP {status}: {body}"
             )));
         }
 

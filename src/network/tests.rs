@@ -3,7 +3,6 @@ mod tests {
     use super::super::*;
     use crate::config::models::Network;
     use std::env;
-    use tokio;
 
     // Helper function to create test network config
     fn create_test_network(name: &str, rpc_url: &str) -> Network {

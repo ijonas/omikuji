@@ -96,6 +96,25 @@ cargo clippy
 
 # Check for common mistakes and improvements
 cargo clippy -- -D warnings
+
+# Run linting with GitHub Actions CI settings
+./scripts/lint.sh
+
+# Or use the Makefile commands
+make lint         # Run all linting checks (matches CI)
+make lint-fix     # Automatically fix issues where possible
+make check        # Run linting + tests
+make ci-check     # Run exact CI pipeline locally
+
+# Run clippy with CI settings directly
+cargo clippy -- -D warnings -D clippy::uninlined_format_args
+
+# Fix clippy issues automatically where possible
+cargo clippy --fix --allow-dirty -- -D warnings -D clippy::uninlined_format_args
+
+# Use cargo aliases (defined in .cargo/config.toml)
+cargo ci-check    # Run clippy with CI settings
+cargo ci-fix      # Fix issues with CI settings
 ```
 
 ### Documentation

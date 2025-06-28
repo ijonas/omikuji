@@ -106,7 +106,7 @@ impl<'a> ContractUpdater<'a> {
 
         // Create a provider with wallet
         let url =
-            Url::parse(rpc_url).with_context(|| format!("Failed to parse RPC URL: {}", rpc_url))?;
+            Url::parse(rpc_url).with_context(|| format!("Failed to parse RPC URL: {rpc_url}"))?;
 
         let provider_with_wallet = ProviderBuilder::new()
             .with_recommended_fillers()

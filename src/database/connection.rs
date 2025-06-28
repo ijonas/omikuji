@@ -16,7 +16,7 @@ pub async fn establish_connection() -> Result<DatabasePool> {
     let db_info = if url_parts.len() > 1 {
         let host_and_db = url_parts[1];
         // Mask sensitive parts of the URL for logging
-        format!("postgres://***@{}", host_and_db)
+        format!("postgres://***@{host_and_db}")
     } else {
         "postgres://***".to_string()
     };

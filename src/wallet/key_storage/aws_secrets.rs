@@ -225,7 +225,7 @@ impl KeyStorage for AwsSecretsStorage {
             network: network.to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
             created_by: "omikuji".to_string(),
-            description: Some(format!("Private key for Omikuji network: {}", network)),
+            description: Some(format!("Private key for Omikuji network: {network}")),
         };
 
         let secret_string =
@@ -284,7 +284,7 @@ impl KeyStorage for AwsSecretsStorage {
             .client
             .create_secret()
             .name(&secret_name)
-            .description(format!("Omikuji private key for network: {}", network))
+            .description(format!("Omikuji private key for network: {network}"))
             .secret_string(&secret_string)
             .tags(
                 aws_sdk_secretsmanager::types::Tag::builder()

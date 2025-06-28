@@ -265,8 +265,8 @@ mod tests {
 
         // Store many keys to test pagination
         for i in 0..25 {
-            let network = format!("network_{}", i);
-            mock.store_internal(&network, &format!("key_{}", i), true)
+            let network = format!("network_{i}");
+            mock.store_internal(&network, &format!("key_{i}"), true)
                 .await
                 .unwrap();
         }

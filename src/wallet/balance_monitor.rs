@@ -81,11 +81,7 @@ impl WalletBalanceMonitor {
                 let balance_native = balance_wei as f64 / 1e18; // Convert to native units
 
                 // Update basic balance metric
-                FeedMetrics::set_wallet_balance(
-                    network_name,
-                    &format!("{:?}", address),
-                    balance_wei,
-                );
+                FeedMetrics::set_wallet_balance(network_name, &format!("{address:?}"), balance_wei);
 
                 // Get native token price from gas price manager if available
                 let native_token_price = if let Some(ref gas_price_manager) = self.gas_price_manager
@@ -111,7 +107,7 @@ impl WalletBalanceMonitor {
                 // Update economic metrics
                 EconomicMetrics::update_wallet_balance_usd(
                     network_name,
-                    &format!("{:?}", address),
+                    &format!("{address:?}"),
                     balance_native,
                     native_token_price,
                 );
@@ -121,7 +117,7 @@ impl WalletBalanceMonitor {
                     let balance_usd = balance_native * native_token_price;
                     EconomicMetrics::update_runway_days(
                         network_name,
-                        &format!("{:?}", address),
+                        &format!("{address:?}"),
                         balance_usd,
                         daily_spend,
                     );

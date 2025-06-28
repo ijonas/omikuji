@@ -41,9 +41,9 @@ async fn main() -> Result<()> {
     let version = format!("Omikuji v{}", env!("CARGO_PKG_VERSION"));
     // The ASCII art is 100 chars wide, so center the version string
     let width = 100;
-    let version_line = format!("{:^width$}", version, width = width);
+    let version_line = format!("{version:^width$}");
     let welcome = ui::welcome_screen::WELCOME_SCREEN.replace("{version_line}", &version_line);
-    println!("{}", welcome);
+    println!("{welcome}");
 
     // Initialize logging after argument parsing
     tracing_subscriber::fmt::init();
