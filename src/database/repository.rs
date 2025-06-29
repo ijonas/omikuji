@@ -337,7 +337,7 @@ mod tests {
         let days = 30u32;
         let now = Utc::now();
         let cutoff_date = now - Duration::days(days as i64);
-        
+
         let duration = now - cutoff_date;
         assert_eq!(duration.num_days(), 30);
     }
@@ -400,7 +400,9 @@ mod tests {
         assert!(query.contains("COUNT(*) as log_count"));
         assert!(query.contains("MIN(created_at) as oldest_log"));
         assert!(query.contains("MAX(created_at) as newest_log"));
-        assert!(query.contains("COUNT(CASE WHEN error_status_code IS NOT NULL OR network_error = true THEN 1 END)"));
+        assert!(query.contains(
+            "COUNT(CASE WHEN error_status_code IS NOT NULL OR network_error = true THEN 1 END)"
+        ));
         assert!(query.contains("GROUP BY feed_name, network_name"));
     }
 

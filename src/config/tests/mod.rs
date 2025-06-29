@@ -275,7 +275,7 @@ mod tests {
         let config_yaml = "";
         let temp_file = create_temp_file(config_yaml);
         let result = load_config(temp_file.path());
-        
+
         assert!(result.is_err());
         assert!(matches!(result, Err(ConfigError::ParseError(_))));
     }
@@ -560,7 +560,7 @@ mod tests {
     #[test]
     fn test_config_file_not_found() {
         let result = load_config(std::path::Path::new("/non/existent/path/config.yaml"));
-        
+
         assert!(result.is_err());
         assert!(matches!(result, Err(ConfigError::FileError(_))));
     }

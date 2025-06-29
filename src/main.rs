@@ -415,25 +415,26 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use std::fs;
-    use config::models::{OmikujiConfig, Network, GasConfig, KeyStorageConfig, KeyringConfig, VaultConfig, AwsSecretsConfig, DatabaseCleanupConfig};
-    use config::metrics_config::MetricsConfig;
-    use gas_price::models::GasPriceFeedConfig;
     use cli::KeyCommands;
+    use config::metrics_config::MetricsConfig;
+    use config::models::{
+        AwsSecretsConfig, DatabaseCleanupConfig, GasConfig, KeyStorageConfig, KeyringConfig,
+        Network, OmikujiConfig, VaultConfig,
+    };
+    use gas_price::models::GasPriceFeedConfig;
+    use std::fs;
+    use tempfile::TempDir;
 
     fn create_test_config() -> OmikujiConfig {
         OmikujiConfig {
-            networks: vec![
-                Network {
-                    name: "test-network".to_string(),
-                    rpc_url: "http://localhost:8545".to_string(),
-                    transaction_type: "eip1559".to_string(),
-                    gas_config: GasConfig::default(),
-                    gas_token: "ethereum".to_string(),
-                    gas_token_symbol: "ETH".to_string(),
-                }
-            ],
+            networks: vec![Network {
+                name: "test-network".to_string(),
+                rpc_url: "http://localhost:8545".to_string(),
+                transaction_type: "eip1559".to_string(),
+                gas_config: GasConfig::default(),
+                gas_token: "ethereum".to_string(),
+                gas_token_symbol: "ETH".to_string(),
+            }],
             datafeeds: vec![],
             database_cleanup: DatabaseCleanupConfig::default(),
             key_storage: KeyStorageConfig {
@@ -508,11 +509,11 @@ mod tests {
         let version = format!("Omikuji v{}", env!("CARGO_PKG_VERSION"));
         let width = 100;
         let version_line = format!("{version:^width$}");
-        
+
         // Check that version line is centered and has correct width
         assert_eq!(version_line.len(), 100);
         assert!(version_line.contains(&version));
-        
+
         // Check that padding is roughly equal on both sides
         let trimmed = version_line.trim();
         let left_padding = version_line.find(trimmed.chars().next().unwrap()).unwrap();
@@ -561,7 +562,10 @@ mod tests {
 
         // Test with DATABASE_URL set
         std::env::set_var("DATABASE_URL", "postgres://localhost/test");
-        assert_eq!(std::env::var("DATABASE_URL").unwrap(), "postgres://localhost/test");
+        assert_eq!(
+            std::env::var("DATABASE_URL").unwrap(),
+            "postgres://localhost/test"
+        );
         std::env::remove_var("DATABASE_URL");
     }
 
@@ -571,21 +575,24 @@ mod tests {
         std::env::remove_var("SKIP_MIGRATIONS");
         let skip = std::env::var("SKIP_MIGRATIONS")
             .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase() == "true";
+            .to_lowercase()
+            == "true";
         assert!(!skip);
 
         // Test true
         std::env::set_var("SKIP_MIGRATIONS", "true");
         let skip = std::env::var("SKIP_MIGRATIONS")
             .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase() == "true";
+            .to_lowercase()
+            == "true";
         assert!(skip);
 
         // Test case insensitive
         std::env::set_var("SKIP_MIGRATIONS", "TRUE");
         let skip = std::env::var("SKIP_MIGRATIONS")
             .unwrap_or_else(|_| "false".to_string())
-            .to_lowercase() == "true";
+            .to_lowercase()
+            == "true";
         assert!(skip);
 
         std::env::remove_var("SKIP_MIGRATIONS");
@@ -598,7 +605,7 @@ mod tests {
 
         // Test environment variable parsing
         std::env::set_var("VAULT_TOKEN", "test-token-123");
-        
+
         let token = config.key_storage.vault.token.as_ref().and_then(|t| {
             if t.starts_with("${") && t.ends_with("}") {
                 let var_name = &t[2..t.len() - 1];
@@ -628,7 +635,7 @@ mod tests {
     #[test]
     fn test_gas_price_manager_initialization() {
         let config = create_test_config();
-        
+
         // Test disabled gas price feeds
         assert!(!config.gas_price_feeds.enabled);
 
@@ -637,8 +644,11 @@ mod tests {
         for network in &config.networks {
             token_mappings.insert(network.name.clone(), network.gas_token.clone());
         }
-        
-        assert_eq!(token_mappings.get("test-network"), Some(&"ethereum".to_string()));
+
+        assert_eq!(
+            token_mappings.get("test-network"),
+            Some(&"ethereum".to_string())
+        );
     }
 
     #[tokio::test]
@@ -646,7 +656,7 @@ mod tests {
         // Create a temporary directory and config file
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("test_config.yaml");
-        
+
         let config_content = r#"
 networks:
   - name: test-network
@@ -662,7 +672,7 @@ key_storage:
 gas_price_feeds:
   enabled: false
 "#;
-        
+
         fs::write(&config_path, config_content).unwrap();
 
         // Test successful config loading

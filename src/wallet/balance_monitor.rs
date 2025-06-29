@@ -151,7 +151,7 @@ impl WalletBalanceMonitor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gas_price::models::{GasPriceFeedConfig, CoinGeckoConfig};
+    use crate::gas_price::models::{CoinGeckoConfig, GasPriceFeedConfig};
 
     #[test]
     fn test_wallet_balance_monitor_creation() {
@@ -162,9 +162,9 @@ mod tests {
             .block_on(NetworkManager::new(&networks))
             .unwrap();
         let network_manager = Arc::new(network_manager);
-        
+
         let monitor = WalletBalanceMonitor::new(network_manager.clone());
-        
+
         assert_eq!(monitor.update_interval_seconds, 60);
         assert!(monitor.gas_price_manager.is_none());
         assert!(monitor.daily_spending_estimates.is_empty());
@@ -178,7 +178,7 @@ mod tests {
             .block_on(NetworkManager::new(&networks))
             .unwrap();
         let network_manager = Arc::new(network_manager);
-        
+
         let gas_config = GasPriceFeedConfig {
             enabled: true,
             update_frequency: 60,
@@ -190,15 +190,11 @@ mod tests {
             fallback_to_cache: true,
             persist_to_database: false,
         };
-        let gas_price_manager = Arc::new(GasPriceManager::new(
-            gas_config,
-            HashMap::new(),
-            None,
-        ));
-        
+        let gas_price_manager = Arc::new(GasPriceManager::new(gas_config, HashMap::new(), None));
+
         let monitor = WalletBalanceMonitor::new(network_manager)
             .with_gas_price_manager(gas_price_manager.clone());
-        
+
         assert!(monitor.gas_price_manager.is_some());
     }
 
@@ -210,15 +206,25 @@ mod tests {
             .block_on(NetworkManager::new(&networks))
             .unwrap();
         let network_manager = Arc::new(network_manager);
-        
+
         let mut monitor = WalletBalanceMonitor::new(network_manager);
-        
+
         // Test adding spending estimates
-        monitor.daily_spending_estimates.insert("network1".to_string(), 10.5);
-        monitor.daily_spending_estimates.insert("network2".to_string(), 25.0);
-        
-        assert_eq!(monitor.daily_spending_estimates.get("network1"), Some(&10.5));
-        assert_eq!(monitor.daily_spending_estimates.get("network2"), Some(&25.0));
+        monitor
+            .daily_spending_estimates
+            .insert("network1".to_string(), 10.5);
+        monitor
+            .daily_spending_estimates
+            .insert("network2".to_string(), 25.0);
+
+        assert_eq!(
+            monitor.daily_spending_estimates.get("network1"),
+            Some(&10.5)
+        );
+        assert_eq!(
+            monitor.daily_spending_estimates.get("network2"),
+            Some(&25.0)
+        );
         assert_eq!(monitor.daily_spending_estimates.get("network3"), None);
     }
 
@@ -230,7 +236,7 @@ mod tests {
             .block_on(NetworkManager::new(&networks))
             .unwrap();
         let network_manager = Arc::new(network_manager);
-        
+
         let monitor = WalletBalanceMonitor::new(network_manager);
         assert_eq!(monitor.update_interval_seconds, 60);
     }
@@ -240,17 +246,19 @@ mod tests {
         let networks = vec![];
         let network_manager = NetworkManager::new(&networks).await.unwrap();
         let network_manager = Arc::new(network_manager);
-        
+
         let monitor = WalletBalanceMonitor::new(network_manager.clone());
-        
+
         // Test balance update with non-existent network
         let result = monitor.update_network_balance("non-existent-network").await;
         assert!(result.is_err());
-        
+
         // Test error message contains expected text
         let error_message = result.unwrap_err().to_string();
-        assert!(error_message.contains("Network not found") || 
-                error_message.contains("No wallet address found"));
+        assert!(
+            error_message.contains("Network not found")
+                || error_message.contains("No wallet address found")
+        );
     }
 
     #[test]
@@ -261,7 +269,7 @@ mod tests {
             .block_on(NetworkManager::new(&networks))
             .unwrap();
         let network_manager = Arc::new(network_manager);
-        
+
         let gas_config = GasPriceFeedConfig {
             enabled: true,
             update_frequency: 30,
@@ -273,27 +281,28 @@ mod tests {
             fallback_to_cache: true,
             persist_to_database: false,
         };
-        let gas_price_manager = Arc::new(GasPriceManager::new(
-            gas_config,
-            HashMap::new(),
-            None,
-        ));
-        
+        let gas_price_manager = Arc::new(GasPriceManager::new(gas_config, HashMap::new(), None));
+
         let mut monitor = WalletBalanceMonitor::new(network_manager.clone());
-        
+
         // Test initial state
         assert_eq!(monitor.update_interval_seconds, 60);
         assert!(monitor.gas_price_manager.is_none());
         assert!(monitor.daily_spending_estimates.is_empty());
-        
+
         // Test with gas price manager
         monitor = monitor.with_gas_price_manager(gas_price_manager);
         assert!(monitor.gas_price_manager.is_some());
-        
+
         // Test daily spending estimates
-        monitor.daily_spending_estimates.insert("eth-mainnet".to_string(), 50.0);
+        monitor
+            .daily_spending_estimates
+            .insert("eth-mainnet".to_string(), 50.0);
         assert_eq!(monitor.daily_spending_estimates.len(), 1);
-        assert_eq!(monitor.daily_spending_estimates.get("eth-mainnet"), Some(&50.0));
+        assert_eq!(
+            monitor.daily_spending_estimates.get("eth-mainnet"),
+            Some(&50.0)
+        );
     }
 
     #[test]
@@ -302,12 +311,12 @@ mod tests {
         let balance_wei = 1_500_000_000_000_000_000u128; // 1.5 ETH in wei
         let balance_native = balance_wei as f64 / 1e18;
         assert!((balance_native - 1.5).abs() < 0.0000001);
-        
+
         // Test balance in USD calculation
         let price_usd = 2000.0;
         let balance_usd = balance_native * price_usd;
         assert!((balance_usd - 3000.0).abs() < 0.01);
-        
+
         // Test runway calculation
         let daily_spend = 100.0;
         let runway_days = balance_usd / daily_spend;
@@ -320,10 +329,14 @@ mod tests {
         let balance_wei = 0u128;
         let balance_native = balance_wei as f64 / 1e18;
         assert_eq!(balance_native, 0.0);
-        
+
         // Test runway calculation with zero balance
         let daily_spend = 10.0;
-        let runway_days = if daily_spend > 0.0 { balance_native / daily_spend } else { 0.0 };
+        let runway_days = if daily_spend > 0.0 {
+            balance_native / daily_spend
+        } else {
+            0.0
+        };
         assert_eq!(runway_days, 0.0);
     }
 
@@ -334,7 +347,7 @@ mod tests {
         let balance_native = large_balance_wei as f64 / 1e18;
         assert!(balance_native > 0.0);
         assert!(balance_native.is_finite());
-        
+
         // Test with maximum practical ETH (total supply is ~120M ETH)
         let max_practical_eth = 120_000_000.0;
         let max_practical_wei = (max_practical_eth * 1e18) as u128;
@@ -353,7 +366,7 @@ mod tests {
             (1000.0, "high spending"),
             (f64::INFINITY, "infinite spending"),
         ];
-        
+
         for (spending, scenario) in daily_spending_scenarios {
             let runway = if spending > 0.0 && spending.is_finite() {
                 balance_usd / spending
@@ -362,8 +375,12 @@ mod tests {
             } else {
                 0.0
             };
-            
-            assert!(runway >= 0.0 || runway.is_infinite(), "Failed for scenario: {}", scenario);
+
+            assert!(
+                runway >= 0.0 || runway.is_infinite(),
+                "Failed for scenario: {}",
+                scenario
+            );
         }
     }
 
@@ -371,21 +388,23 @@ mod tests {
     fn test_concurrent_balance_updates() {
         use std::sync::atomic::{AtomicU64, Ordering};
         use std::sync::Arc as StdArc;
-        
+
         let balance_counter = StdArc::new(AtomicU64::new(0));
-        let update_threads: Vec<_> = (0..10).map(|i| {
-            let counter = StdArc::clone(&balance_counter);
-            std::thread::spawn(move || {
-                // Simulate balance update
-                let new_balance = 1000 + i * 100;
-                counter.store(new_balance, Ordering::SeqCst);
+        let update_threads: Vec<_> = (0..10)
+            .map(|i| {
+                let counter = StdArc::clone(&balance_counter);
+                std::thread::spawn(move || {
+                    // Simulate balance update
+                    let new_balance = 1000 + i * 100;
+                    counter.store(new_balance, Ordering::SeqCst);
+                })
             })
-        }).collect();
-        
+            .collect();
+
         for thread in update_threads {
             thread.join().unwrap();
         }
-        
+
         let final_balance = balance_counter.load(Ordering::SeqCst);
         assert!(final_balance >= 1000 && final_balance <= 1900);
     }
@@ -395,7 +414,7 @@ mod tests {
         // Test when gas price data is unavailable
         let balance_eth = 1.0;
         let gas_price_opt: Option<f64> = None;
-        
+
         // Calculate runway without gas price data
         let runway_days = match gas_price_opt {
             Some(gas_price) => {
@@ -407,7 +426,7 @@ mod tests {
                 f64::INFINITY
             }
         };
-        
+
         assert!(runway_days.is_infinite());
     }
 
@@ -415,18 +434,16 @@ mod tests {
     fn test_multiple_network_balance_aggregation() {
         let mut network_balances = HashMap::new();
         network_balances.insert("ethereum".to_string(), 1000.0); // $1000
-        network_balances.insert("polygon".to_string(), 500.0);   // $500
-        network_balances.insert("arbitrum".to_string(), 250.0);  // $250
-        network_balances.insert("optimism".to_string(), 0.0);    // $0
-        
+        network_balances.insert("polygon".to_string(), 500.0); // $500
+        network_balances.insert("arbitrum".to_string(), 250.0); // $250
+        network_balances.insert("optimism".to_string(), 0.0); // $0
+
         let total_balance_usd: f64 = network_balances.values().sum();
         assert_eq!(total_balance_usd, 1750.0);
-        
+
         // Test with some networks having errors
         network_balances.insert("base".to_string(), f64::NAN);
-        let valid_balance: f64 = network_balances.values()
-            .filter(|v| v.is_finite())
-            .sum();
+        let valid_balance: f64 = network_balances.values().filter(|v| v.is_finite()).sum();
         assert_eq!(valid_balance, 1750.0);
     }
 
@@ -434,12 +451,12 @@ mod tests {
     fn test_update_interval_edge_cases() {
         // Test various update intervals
         let test_intervals = vec![
-            (0u64, "zero interval"),      // Should default to something reasonable
-            (1u64, "one second"),         // Very frequent
-            (86400u64, "one day"),        // Very infrequent
-            (u64::MAX, "max interval"),   // Extreme case
+            (0u64, "zero interval"),    // Should default to something reasonable
+            (1u64, "one second"),       // Very frequent
+            (86400u64, "one day"),      // Very infrequent
+            (u64::MAX, "max interval"), // Extreme case
         ];
-        
+
         for (interval, description) in test_intervals {
             let safe_interval = if interval == 0 {
                 60 // Default to 60 seconds
@@ -448,9 +465,13 @@ mod tests {
             } else {
                 interval
             };
-            
-            assert!(safe_interval > 0 && safe_interval <= 86400, 
-                   "Invalid interval for {}: {}", description, safe_interval);
+
+            assert!(
+                safe_interval > 0 && safe_interval <= 86400,
+                "Invalid interval for {}: {}",
+                description,
+                safe_interval
+            );
         }
     }
 
@@ -458,11 +479,11 @@ mod tests {
     fn test_balance_precision_loss() {
         // Test for precision loss in balance calculations
         let small_amounts_wei = vec![
-            1u128,          // 1 wei
-            100u128,        // 100 wei
-            1_000_000u128,  // 1 million wei
+            1u128,         // 1 wei
+            100u128,       // 100 wei
+            1_000_000u128, // 1 million wei
         ];
-        
+
         for wei_amount in small_amounts_wei {
             let eth_amount = wei_amount as f64 / 1e18;
             // These amounts should be effectively zero in ETH
@@ -476,13 +497,13 @@ mod tests {
         let networks = vec![];
         let network_manager = NetworkManager::new(&networks).await.unwrap();
         let network_manager = Arc::new(network_manager);
-        
+
         let monitor = WalletBalanceMonitor::new(network_manager.clone());
-        
+
         // Simulate multiple failed attempts followed by success
         let mut attempt_count = 0;
         let max_attempts = 3;
-        
+
         while attempt_count < max_attempts {
             let result = monitor.update_network_balance("test-network").await;
             if result.is_err() {
@@ -492,7 +513,7 @@ mod tests {
                 break;
             }
         }
-        
+
         assert!(attempt_count <= max_attempts);
     }
 }

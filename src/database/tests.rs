@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::database::models::{NewFeedLog, FeedLog};
-    use crate::database::repository::FeedSummary;
     use crate::database::establish_connection;
-    use chrono::{Utc, Duration};
+    use crate::database::models::{FeedLog, NewFeedLog};
+    use crate::database::repository::FeedSummary;
+    use chrono::{Duration, Utc};
 
     #[test]
     fn test_new_feed_log_creation() {
@@ -53,7 +53,6 @@ mod tests {
         assert!(log.network_error);
     }
 
-
     #[test]
     fn test_feed_log_model() {
         let now = Utc::now();
@@ -75,8 +74,6 @@ mod tests {
         assert_eq!(log.feed_value, 2500.0);
         assert!(!log.network_error);
     }
-
-
 
     #[test]
     fn test_feed_summary_struct() {
@@ -104,7 +101,10 @@ mod tests {
         pub fn setup_test_db_url() {
             // Set a test database URL if not already set
             if env::var("DATABASE_URL").is_err() {
-                env::set_var("DATABASE_URL", "postgres://test:test@localhost:5432/test_db");
+                env::set_var(
+                    "DATABASE_URL",
+                    "postgres://test:test@localhost:5432/test_db",
+                );
             }
         }
 
@@ -117,22 +117,24 @@ mod tests {
     async fn test_establish_connection_no_database_url() {
         // Ensure DATABASE_URL is not set
         mock_db::cleanup_test_db_url();
-        
+
         let result = establish_connection().await;
         assert!(result.is_err());
-        
+
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("DATABASE_URL environment variable not set"));
+        assert!(err
+            .to_string()
+            .contains("DATABASE_URL environment variable not set"));
     }
 
     #[tokio::test]
     async fn test_establish_connection_invalid_url() {
         // Set an invalid database URL
         std::env::set_var("DATABASE_URL", "invalid://url");
-        
+
         let result = establish_connection().await;
         assert!(result.is_err());
-        
+
         mock_db::cleanup_test_db_url();
     }
 
@@ -141,16 +143,16 @@ mod tests {
         // Test URL masking logic
         let test_url = "postgres://user:password@localhost:5432/mydb";
         let url_parts: Vec<&str> = test_url.split('@').collect();
-        
+
         assert_eq!(url_parts.len(), 2);
-        
+
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
             format!("postgres://***@{}", host_and_db)
         } else {
             "postgres://***".to_string()
         };
-        
+
         assert_eq!(masked, "postgres://***@localhost:5432/mydb");
     }
 
@@ -159,7 +161,7 @@ mod tests {
         let now = Utc::now();
         let days = 7;
         let cutoff = now - Duration::days(days as i64);
-        
+
         // Check that cutoff is approximately 7 days ago
         let diff = now - cutoff;
         assert_eq!(diff.num_days(), 7);
@@ -167,10 +169,10 @@ mod tests {
 
     #[test]
     fn test_cleanup_manager_config_validation() {
-        use crate::config::models::{OmikujiConfig, DatabaseCleanupConfig};
         use crate::config::metrics_config::MetricsConfig;
+        use crate::config::models::{DatabaseCleanupConfig, OmikujiConfig};
         use crate::gas_price::models::GasPriceFeedConfig;
-        
+
         let config = OmikujiConfig {
             networks: vec![],
             datafeeds: vec![],
@@ -182,14 +184,14 @@ mod tests {
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
         };
-        
+
         assert!(config.database_cleanup.enabled);
     }
 
     // Additional repository tests
     #[test]
     fn test_repository_creation() {
-        
+
         // This would normally use a real pool in integration tests
         // For unit tests, we're just testing the structure
         // let pool = PgPool::new();
@@ -198,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_transaction_repository_methods() {
-        
+
         // Test that TransactionLogRepository can be created
         // In real tests, this would use a test database
         // let pool = PgPool::new();
@@ -207,10 +209,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_cleanup_manager_creation() {
-        use crate::config::models::{OmikujiConfig, DatabaseCleanupConfig};
         use crate::config::metrics_config::MetricsConfig;
+        use crate::config::models::{DatabaseCleanupConfig, OmikujiConfig};
         use crate::gas_price::models::GasPriceFeedConfig;
-        
+
         let config = OmikujiConfig {
             networks: vec![],
             datafeeds: vec![],
@@ -222,13 +224,13 @@ mod tests {
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
         };
-        
+
         // Mock repository for testing
         // In real tests, this would use a test database
         // let pool = create_test_pool().await;
         // let repository = Arc::new(FeedLogRepository::new(pool));
         // let manager = CleanupManager::new(config, repository).await;
-        
+
         assert!(!config.database_cleanup.enabled);
     }
 
@@ -236,13 +238,13 @@ mod tests {
     fn test_cron_schedule_parsing() {
         // Test various cron schedule formats
         let valid_schedules = vec![
-            "0 0 * * *",      // Daily at midnight
-            "0 2 * * *",      // Daily at 2 AM
-            "0 */6 * * *",    // Every 6 hours
-            "30 2 * * 0",     // Weekly on Sunday at 2:30 AM
-            "0 0 1 * *",      // Monthly on the 1st
+            "0 0 * * *",   // Daily at midnight
+            "0 2 * * *",   // Daily at 2 AM
+            "0 */6 * * *", // Every 6 hours
+            "30 2 * * 0",  // Weekly on Sunday at 2:30 AM
+            "0 0 1 * *",   // Monthly on the 1st
         ];
-        
+
         for schedule in valid_schedules {
             assert!(!schedule.is_empty());
             assert!(schedule.split_whitespace().count() == 5);
@@ -255,14 +257,14 @@ mod tests {
         // Test connection pool configuration
         use sqlx::postgres::PgPoolOptions;
         use std::time::Duration as StdDuration;
-        
+
         let pool_options = PgPoolOptions::new()
             .max_connections(5)
             .min_connections(1)
             .acquire_timeout(StdDuration::from_secs(3))
             .idle_timeout(StdDuration::from_secs(600))
             .max_lifetime(StdDuration::from_secs(1800));
-        
+
         // Verify pool options are set correctly
         // In a real test, we'd try to exceed connections and verify error handling
     }
@@ -271,16 +273,16 @@ mod tests {
     fn test_transaction_rollback_scenarios() {
         // Test transaction rollback logic
         use crate::database::models::NewFeedLog;
-        
+
         let invalid_log = NewFeedLog {
             feed_name: "".to_string(), // Empty name should fail validation
             network_name: "ethereum".to_string(),
-            feed_value: f64::NAN, // NaN value should fail
-            feed_timestamp: -1, // Invalid timestamp
+            feed_value: f64::NAN,            // NaN value should fail
+            feed_timestamp: -1,              // Invalid timestamp
             error_status_code: Some(999999), // Invalid status code
             network_error: false,
         };
-        
+
         // In a real test with DB connection, this would test rollback
         assert!(invalid_log.feed_name.is_empty());
         assert!(invalid_log.feed_value.is_nan());
@@ -296,7 +298,7 @@ mod tests {
             (i64::MAX, "max timestamp"),
             (253402300799i64, "year 9999 timestamp"), // Far future
         ];
-        
+
         for (timestamp, description) in test_cases {
             let log = NewFeedLog {
                 feed_name: "test".to_string(),
@@ -306,7 +308,7 @@ mod tests {
                 error_status_code: None,
                 network_error: false,
             };
-            
+
             // Verify we can handle these edge cases
             assert_eq!(log.feed_timestamp, timestamp, "Failed for: {}", description);
         }
@@ -324,7 +326,7 @@ mod tests {
             (1e-10, "very small value"),
             (1e10, "very large value"),
         ];
-        
+
         for (value, description) in edge_values {
             let log = NewFeedLog {
                 feed_name: "edge_test".to_string(),
@@ -334,7 +336,7 @@ mod tests {
                 error_status_code: None,
                 network_error: false,
             };
-            
+
             assert_eq!(log.feed_value, value, "Failed for: {}", description);
         }
     }
@@ -342,32 +344,34 @@ mod tests {
     #[test]
     fn test_concurrent_write_handling() {
         // Test concurrent write scenarios
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicU32, Ordering};
-        
+        use std::sync::Arc;
+
         let write_counter = Arc::new(AtomicU32::new(0));
         let error_counter = Arc::new(AtomicU32::new(0));
-        
+
         // Simulate concurrent writes
-        let handles: Vec<_> = (0..10).map(|i| {
-            let write_count = Arc::clone(&write_counter);
-            let error_count = Arc::clone(&error_counter);
-            
-            std::thread::spawn(move || {
-                // Simulate write attempt
-                write_count.fetch_add(1, Ordering::SeqCst);
-                
-                // Simulate some writes failing due to conflicts
-                if i % 3 == 0 {
-                    error_count.fetch_add(1, Ordering::SeqCst);
-                }
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let write_count = Arc::clone(&write_counter);
+                let error_count = Arc::clone(&error_counter);
+
+                std::thread::spawn(move || {
+                    // Simulate write attempt
+                    write_count.fetch_add(1, Ordering::SeqCst);
+
+                    // Simulate some writes failing due to conflicts
+                    if i % 3 == 0 {
+                        error_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                })
             })
-        }).collect();
-        
+            .collect();
+
         for handle in handles {
             handle.join().unwrap();
         }
-        
+
         assert_eq!(write_counter.load(Ordering::SeqCst), 10);
         assert!(error_counter.load(Ordering::SeqCst) > 0);
     }
@@ -382,7 +386,7 @@ mod tests {
             "feed_name); DELETE FROM feed_logs; --",
             "<script>alert('xss')</script>",
         ];
-        
+
         for input in malicious_inputs {
             let log = NewFeedLog {
                 feed_name: input.to_string(),
@@ -392,7 +396,7 @@ mod tests {
                 error_status_code: None,
                 network_error: false,
             };
-            
+
             // Verify the string is stored as-is (parameterized queries handle escaping)
             assert_eq!(log.feed_name, input);
         }
@@ -402,10 +406,10 @@ mod tests {
     fn test_database_migration_failure_scenarios() {
         // Test migration failure handling
         use std::path::Path;
-        
+
         let migration_path = Path::new("./migrations");
         assert!(migration_path.exists(), "Migrations directory should exist");
-        
+
         // In a real test, we'd test:
         // - Missing migration files
         // - Invalid SQL in migrations
@@ -417,7 +421,7 @@ mod tests {
     fn test_maximum_batch_size_handling() {
         // Test batch insert limits
         const MAX_BATCH_SIZE: usize = 1000;
-        
+
         let large_batch: Vec<NewFeedLog> = (0..MAX_BATCH_SIZE + 100)
             .map(|i| NewFeedLog {
                 feed_name: format!("feed_{}", i),
@@ -428,9 +432,9 @@ mod tests {
                 network_error: false,
             })
             .collect();
-        
+
         assert_eq!(large_batch.len(), MAX_BATCH_SIZE + 100);
-        
+
         // In a real implementation, this would test batch splitting logic
         let chunks: Vec<_> = large_batch.chunks(MAX_BATCH_SIZE).collect();
         assert_eq!(chunks.len(), 2);
@@ -442,12 +446,12 @@ mod tests {
     fn test_cleanup_with_active_connections() {
         // Test cleanup behavior when there are active connections
         use crate::config::models::DatabaseCleanupConfig;
-        
+
         let cleanup_config = DatabaseCleanupConfig {
             enabled: true,
             schedule: "*/5 * * * *".to_string(), // Every 5 minutes
         };
-        
+
         // Simulate active connection scenario
         // In real test, would verify cleanup waits for connections to finish
         assert!(cleanup_config.enabled);
@@ -457,7 +461,7 @@ mod tests {
     fn test_network_partition_recovery() {
         // Test database reconnection after network partition
         use std::time::Duration as StdDuration;
-        
+
         let reconnect_intervals = vec![
             StdDuration::from_millis(100),
             StdDuration::from_millis(500),
@@ -465,7 +469,7 @@ mod tests {
             StdDuration::from_secs(5),
             StdDuration::from_secs(30),
         ];
-        
+
         // Verify exponential backoff strategy
         for (i, interval) in reconnect_intervals.iter().enumerate() {
             if i > 0 {

@@ -155,27 +155,27 @@ mod tests {
         // Test with full connection string
         let database_url = "postgres://user:password@localhost:5432/mydb";
         let url_parts: Vec<&str> = database_url.split('@').collect();
-        
+
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
             format!("postgres://***@{}", host_and_db)
         } else {
             "postgres://***".to_string()
         };
-        
+
         assert_eq!(masked, "postgres://***@localhost:5432/mydb");
-        
+
         // Test with no @ symbol
         let database_url = "postgres://localhost";
         let url_parts: Vec<&str> = database_url.split('@').collect();
-        
+
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
             format!("postgres://***@{}", host_and_db)
         } else {
             "postgres://***".to_string()
         };
-        
+
         assert_eq!(masked, "postgres://***");
     }
 
@@ -183,15 +183,18 @@ mod tests {
     async fn test_establish_connection_without_env() {
         // Save current DATABASE_URL if it exists
         let saved_url = env::var("DATABASE_URL").ok();
-        
+
         // Remove DATABASE_URL
         env::remove_var("DATABASE_URL");
-        
+
         // Test that connection fails without DATABASE_URL
         let result = establish_connection().await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("DATABASE_URL environment variable not set"));
-        
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("DATABASE_URL environment variable not set"));
+
         // Restore DATABASE_URL if it was set
         if let Some(url) = saved_url {
             env::set_var("DATABASE_URL", url);
@@ -203,7 +206,7 @@ mod tests {
         // Test that pool options are set correctly
         let max_connections = 10;
         let min_connections = 2;
-        
+
         assert!(max_connections > min_connections);
         assert_eq!(max_connections, 10);
         assert_eq!(min_connections, 2);
@@ -217,7 +220,7 @@ mod tests {
             WHERE table_schema = 'public' 
             AND table_name = 'feed_log'
         )";
-        
+
         assert!(query.contains("information_schema.tables"));
         assert!(query.contains("table_schema = 'public'"));
         assert!(query.contains("table_name = 'feed_log'"));
@@ -228,7 +231,7 @@ mod tests {
         // Test the format of the test insert query
         let query = "INSERT INTO feed_log (feed_name, network_name, feed_value, feed_timestamp) 
          VALUES ($1, $2, $3, $4)";
-        
+
         assert!(query.contains("INSERT INTO feed_log"));
         assert!(query.contains("feed_name"));
         assert!(query.contains("network_name"));

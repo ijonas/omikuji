@@ -122,7 +122,7 @@ mod tests {
 
     // Mock provider tests would require more complex setup with mock HTTP servers
     // For now, we focus on the basic structure and error handling tests
-    
+
     #[test]
     fn test_network_config_validation() {
         let valid_network = create_test_network("ethereum", "https://eth.llamarpc.com");
@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(valid_network.transaction_type, "eip1559");
         assert_eq!(valid_network.gas_token_symbol, "ETH");
     }
-    
+
     #[test]
     fn test_multiple_network_configurations() {
         let networks = vec![
@@ -139,12 +139,12 @@ mod tests {
             create_test_network("arbitrum", "https://arb1.arbitrum.io/rpc"),
             create_test_network("optimism", "https://mainnet.optimism.io"),
         ];
-        
+
         assert_eq!(networks.len(), 4);
         assert!(networks.iter().all(|n| !n.rpc_url.is_empty()));
         assert!(networks.iter().all(|n| n.transaction_type == "eip1559"));
     }
-    
+
     #[test]
     fn test_network_rpc_url_formats() {
         // Test various RPC URL formats
@@ -152,42 +152,42 @@ mod tests {
         let https_network = create_test_network("https", "https://eth.llamarpc.com");
         let ws_network = create_test_network("websocket", "ws://localhost:8546");
         let wss_network = create_test_network("websocket-secure", "wss://eth-ws.llamarpc.com");
-        
+
         assert!(http_network.rpc_url.starts_with("http://"));
         assert!(https_network.rpc_url.starts_with("https://"));
         assert!(ws_network.rpc_url.starts_with("ws://"));
         assert!(wss_network.rpc_url.starts_with("wss://"));
     }
-    
+
     #[test]
     fn test_transaction_type_variations() {
         let mut legacy_network = create_test_network("legacy", "http://localhost:8545");
         legacy_network.transaction_type = "legacy".to_string();
-        
+
         let mut eip1559_network = create_test_network("eip1559", "http://localhost:8545");
         eip1559_network.transaction_type = "eip1559".to_string();
-        
+
         assert_eq!(legacy_network.transaction_type, "legacy");
         assert_eq!(eip1559_network.transaction_type, "eip1559");
     }
-    
+
     #[test]
     fn test_gas_token_variations() {
         let eth_network = create_test_network("ethereum", "https://eth.llamarpc.com");
-        
+
         let mut bnb_network = create_test_network("bsc", "https://bsc-dataseed.binance.org");
         bnb_network.gas_token = "binance".to_string();
         bnb_network.gas_token_symbol = "BNB".to_string();
-        
+
         let mut matic_network = create_test_network("polygon", "https://polygon-rpc.com");
         matic_network.gas_token = "matic".to_string();
         matic_network.gas_token_symbol = "MATIC".to_string();
-        
+
         assert_eq!(eth_network.gas_token_symbol, "ETH");
         assert_eq!(bnb_network.gas_token_symbol, "BNB");
         assert_eq!(matic_network.gas_token_symbol, "MATIC");
     }
-    
+
     #[tokio::test]
     async fn test_provider_creation_error_handling() {
         // Test with invalid URLs that should fail immediately
@@ -198,14 +198,14 @@ mod tests {
             "http://",
             "https://",
         ];
-        
+
         for url in invalid_urls {
             let network = create_test_network("test", url);
             let result = NetworkManager::new(&[network]).await;
             assert!(result.is_err(), "Should fail for URL: {}", url);
         }
     }
-    
+
     #[test]
     fn test_network_name_validation() {
         // Test network names
@@ -218,27 +218,27 @@ mod tests {
             "arbitrum-one",
             "base",
         ];
-        
+
         for name in valid_names {
             let network = create_test_network(name, "http://localhost:8545");
             assert_eq!(network.name, name);
         }
     }
-    
+
     #[test]
     fn test_default_gas_config() {
         let network = create_test_network("test", "http://localhost:8545");
-        
+
         // Check default gas config values
         assert!(network.gas_config.gas_limit.is_none());
         assert!(network.gas_config.gas_price_gwei.is_none());
         assert!(network.gas_config.max_fee_per_gas_gwei.is_none());
         assert!(network.gas_config.max_priority_fee_per_gas_gwei.is_none());
     }
-    
+
     mod provider_tests {
         use super::*;
-        
+
         #[test]
         fn test_provider_url_parsing() {
             // Test URL parsing logic
@@ -250,45 +250,44 @@ mod tests {
                 ("invalid://protocol", true), // url::Url::parse accepts custom protocols
                 ("", false),
             ];
-            
+
             for (url, should_be_valid) in test_cases {
                 let parsed = url::Url::parse(url);
                 assert_eq!(parsed.is_ok(), should_be_valid, "URL: {}", url);
             }
         }
     }
-    
+
     mod signer_tests {
         use super::*;
-        
+
         #[test]
         fn test_private_key_format() {
             // Test private key format validation (without actual keys)
             let valid_hex_lengths = vec![
-                64,  // 32 bytes without 0x prefix
-                66,  // 32 bytes with 0x prefix
+                64, // 32 bytes without 0x prefix
+                66, // 32 bytes with 0x prefix
             ];
-            
+
             for len in valid_hex_lengths {
                 let dummy_key = "0".repeat(len);
                 assert_eq!(dummy_key.len(), len);
             }
         }
-        
+
         #[test]
         fn test_wallet_creation_requirements() {
             // Test that wallet creation requires proper key format
             let invalid_keys = vec![
-                "",
-                "0x",
-                "invalid",
-                "0x123", // too short
+                "", "0x", "invalid", "0x123", // too short
             ];
-            
+
             // Test invalid hex chars separately
             let invalid_hex = format!("0x{}", "G".repeat(64));
-            assert!(!invalid_hex.chars().all(|c| c.is_ascii_hexdigit() || c == 'x'));
-            
+            assert!(!invalid_hex
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() || c == 'x'));
+
             for key in invalid_keys {
                 assert!(key.len() < 64 || !key.chars().all(|c| c.is_ascii_hexdigit() || c == 'x'));
             }

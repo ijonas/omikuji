@@ -330,7 +330,7 @@ mod tests {
     fn test_transaction_details_conversion() {
         let details = create_test_transaction_details();
         let total_cost_wei = details.total_cost_wei.to_string();
-        
+
         assert_eq!(total_cost_wei, "5325000000000000");
         assert_eq!(details.feed_name, "eth_usd");
         assert_eq!(details.gas_used, 150000);
@@ -406,7 +406,7 @@ mod tests {
         let gas_limit = 200000;
         let gas_used = 150000;
         let efficiency = (gas_used as f64 / gas_limit as f64) * 100.0;
-        
+
         assert_eq!(efficiency, 75.0);
     }
 
@@ -426,7 +426,7 @@ mod tests {
         let threshold_gwei = 100.0;
         let high_gas_price = 150.0;
         let low_gas_price = 50.0;
-        
+
         assert!(high_gas_price > threshold_gwei);
         assert!(low_gas_price < threshold_gwei);
     }
@@ -436,10 +436,13 @@ mod tests {
         let mut details = create_test_transaction_details();
         details.status = "failed".to_string();
         details.error_message = Some("Reverted: Insufficient funds".to_string());
-        
+
         assert_eq!(details.status, "failed");
         assert!(details.error_message.is_some());
-        assert!(details.error_message.unwrap().contains("Insufficient funds"));
+        assert!(details
+            .error_message
+            .unwrap()
+            .contains("Insufficient funds"));
     }
 }
 

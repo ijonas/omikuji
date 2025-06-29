@@ -152,8 +152,8 @@ pub async fn run_manual_cleanup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::models::{Network, Datafeed};
     use crate::config::metrics_config::MetricsConfig;
+    use crate::config::models::{Datafeed, Network};
     use crate::gas_price::models::GasPriceFeedConfig;
 
     fn create_test_config() -> OmikujiConfig {
@@ -201,11 +201,11 @@ mod tests {
     fn test_cron_schedule_validation() {
         // Test various valid cron expressions
         let valid_schedules = vec![
-            "0 2 * * *",        // Daily at 2 AM
-            "0 */6 * * *",      // Every 6 hours
-            "0 0 * * 0",        // Weekly on Sunday
-            "0 0 1 * *",        // Monthly on the 1st
-            "*/5 * * * *",      // Every 5 minutes
+            "0 2 * * *",   // Daily at 2 AM
+            "0 */6 * * *", // Every 6 hours
+            "0 0 * * 0",   // Weekly on Sunday
+            "0 0 1 * *",   // Monthly on the 1st
+            "*/5 * * * *", // Every 5 minutes
         ];
 
         for schedule in valid_schedules {
@@ -218,14 +218,14 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_manager_creation() {
         let config = create_test_config();
-        
+
         // This would normally use a real database pool
         // For unit tests, we just test that the manager can be created
         // let pool = create_test_pool().await;
         // let repository = Arc::new(FeedLogRepository::new(pool));
         // let manager = CleanupManager::new(config, repository).await;
         // assert!(manager.is_ok());
-        
+
         assert!(config.database_cleanup.enabled);
     }
 
@@ -234,7 +234,7 @@ mod tests {
         let retention_days = 30;
         let now = chrono::Utc::now();
         let cutoff = now - chrono::Duration::days(retention_days as i64);
-        
+
         let diff = now - cutoff;
         assert_eq!(diff.num_days(), retention_days as i64);
     }
@@ -244,7 +244,7 @@ mod tests {
         let start = chrono::Utc::now();
         let end = start + chrono::Duration::milliseconds(1500);
         let duration = end - start;
-        
+
         let seconds = duration.num_milliseconds() as f64 / 1000.0;
         assert_eq!(seconds, 1.5);
     }
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_feed_config_retention() {
         let config = create_test_config();
-        
+
         // Test that each datafeed would use the global retention setting
         for datafeed in &config.datafeeds {
             assert_eq!(datafeed.name, "test-feed");
@@ -264,7 +264,7 @@ mod tests {
     fn test_cleanup_disabled_config() {
         let mut config = create_test_config();
         config.database_cleanup.enabled = false;
-        
+
         assert!(!config.database_cleanup.enabled);
     }
 }

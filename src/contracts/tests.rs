@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::flux_aggregator::*;
+    use crate::datafeed::contract_utils::{parse_address, scale_value_for_contract};
     use alloy::{
         node_bindings::Anvil,
         primitives::{Address, I256, U256},
@@ -8,7 +9,6 @@ mod tests {
         sol_types::SolCall,
         transports::http::{Client, Http},
     };
-    use crate::datafeed::contract_utils::{scale_value_for_contract, parse_address};
 
     // Helper to deploy a mock FluxAggregator for testing
     // In real tests, you'd deploy an actual contract on a test network
@@ -120,12 +120,12 @@ mod tests {
         let oracle_address = "0x0000000000000000000000000000000000000001"
             .parse::<Address>()
             .unwrap();
-        
+
         let call = IFluxAggregator::oracleRoundStateCall {
             _oracle: oracle_address,
             _queriedRoundId: 123,
         };
-        
+
         let encoded = call.abi_encode();
         assert!(!encoded.is_empty());
         assert!(encoded.len() > 0);
@@ -149,10 +149,10 @@ mod tests {
     fn test_min_max_submission_value_calls() {
         let min_call = IFluxAggregator::minSubmissionValueCall {};
         let max_call = IFluxAggregator::maxSubmissionValueCall {};
-        
+
         let min_encoded = min_call.abi_encode();
         let max_encoded = max_call.abi_encode();
-        
+
         assert!(!min_encoded.is_empty());
         assert!(!max_encoded.is_empty());
     }
@@ -181,7 +181,6 @@ mod tests {
         let encoded = call.abi_encode();
         assert!(!encoded.is_empty());
     }
-
 
     #[test]
     fn test_value_scaling_edge_cases() {
@@ -254,16 +253,16 @@ mod tests {
     #[test]
     fn test_transaction_request_building() {
         use alloy::rpc::types::TransactionRequest;
-        
+
         let address = "0x1234567890123456789012345678901234567890"
             .parse::<Address>()
             .unwrap();
-        
+
         let call = IFluxAggregator::decimalsCall {};
         let tx = TransactionRequest::default()
             .to(address)
             .input(call.abi_encode().into());
-        
+
         // Check that the transaction is correctly addressed
         assert!(tx.input.input.is_some());
     }
@@ -272,19 +271,19 @@ mod tests {
     fn test_scaling_precision() {
         // Test that scaling maintains precision within reasonable bounds
         let value = 123.456789123456789;
-        
+
         // With 18 decimals (max ETH precision)
         let scaled_18 = scale_value_for_contract(value, 18);
         // Due to f64 precision limits, we can't expect exact values for 18 decimals
         // Instead, verify the general magnitude is correct
         assert!(scaled_18 > 123_000_000_000_000_000_000i128);
         assert!(scaled_18 < 124_000_000_000_000_000_000i128);
-        
+
         // Test with a simpler value for 18 decimals
         let simple_value = 1.5;
         let simple_scaled = scale_value_for_contract(simple_value, 18);
         assert_eq!(simple_scaled, 1_500_000_000_000_000_000i128);
-        
+
         // With 6 decimals (USDC precision)
         let scaled_6 = scale_value_for_contract(value, 6);
         assert_eq!(scaled_6, 123456789); // Rounded to 6 decimals

@@ -295,7 +295,7 @@ mod tests {
     fn test_active_datafeeds_metrics() {
         // Test setting active datafeed metrics
         ConfigMetrics::update_active_datafeeds("ethereum", 5, 2, 1);
-        
+
         // Verify metrics were set (in a real test, we'd check the actual metric values)
         // For unit tests, we're mainly ensuring the code doesn't panic
     }
@@ -311,31 +311,21 @@ mod tests {
             0.5,
             3600,
         );
-        
+
         // Verify metrics were set
     }
 
     #[test]
     fn test_network_config_metrics() {
-        ConfigMetrics::set_network_config(
-            "ethereum",
-            "https://eth.llamarpc.com",
-            "eip1559",
-            1.1,
-        );
-        
+        ConfigMetrics::set_network_config("ethereum", "https://eth.llamarpc.com", "eip1559", 1.1);
+
         // Verify metrics were set
     }
 
     #[test]
     fn test_version_info_metrics() {
-        ConfigMetrics::set_version_info(
-            "0.1.0",
-            "abc123",
-            "2024-01-01",
-            "1.75.0",
-        );
-        
+        ConfigMetrics::set_version_info("0.1.0", "abc123", "2024-01-01", "1.75.0");
+
         // Verify metrics were set
     }
 
@@ -343,7 +333,7 @@ mod tests {
     fn test_feature_flags() {
         ConfigMetrics::update_feature_flag("database", true);
         ConfigMetrics::update_feature_flag("metrics_server", false);
-        
+
         // Verify flags were set
     }
 
@@ -351,7 +341,7 @@ mod tests {
     fn test_environment_info() {
         ConfigMetrics::set_environment_info("production", "daemon", "us-west-2");
         ConfigMetrics::set_environment_info("development", "cli", "local");
-        
+
         // Verify environment info was set
     }
 
@@ -359,7 +349,7 @@ mod tests {
     fn test_monitoring_cycle_metrics() {
         ConfigMetrics::update_monitoring_cycle("feed_check", 1.5);
         ConfigMetrics::update_monitoring_cycle("balance_check", 0.25);
-        
+
         // Verify cycle duration was recorded
     }
 
@@ -367,7 +357,7 @@ mod tests {
     fn test_config_reload_metrics() {
         ConfigMetrics::record_config_reload("manual", true);
         ConfigMetrics::record_config_reload("automatic", false);
-        
+
         // Verify reload count was incremented
     }
 
@@ -376,16 +366,16 @@ mod tests {
         ConfigMetrics::set_key_storage_config("keyring", Some("omikuji"));
         ConfigMetrics::set_key_storage_config("env", None);
         ConfigMetrics::set_key_storage_config("vault", None);
-        
+
         // Verify key storage config was set
     }
 
     #[test]
     fn test_startup_info_with_config() {
-        use crate::config::models::{OmikujiConfig, Network, Datafeed, KeyStorageConfig};
         use crate::config::metrics_config::MetricsConfig;
+        use crate::config::models::{Datafeed, KeyStorageConfig, Network, OmikujiConfig};
         use crate::gas_price::models::GasPriceFeedConfig;
-        
+
         let config = OmikujiConfig {
             networks: vec![Network {
                 name: "test-network".to_string(),
@@ -422,9 +412,9 @@ mod tests {
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
         };
-        
+
         ConfigMetrics::record_startup_info(&config);
-        
+
         // Verify all startup metrics were set
     }
 
@@ -432,7 +422,7 @@ mod tests {
     fn test_database_status() {
         ConfigMetrics::set_database_status(true);
         ConfigMetrics::set_database_status(false);
-        
+
         // Verify database feature flag was updated
     }
 
@@ -440,7 +430,7 @@ mod tests {
     fn test_metrics_server_status() {
         ConfigMetrics::set_metrics_server_status(true, 9090);
         ConfigMetrics::set_metrics_server_status(false, 0);
-        
+
         // Verify metrics server feature flag was updated
     }
 }
