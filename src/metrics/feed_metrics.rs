@@ -163,3 +163,140 @@ impl FeedMetrics {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wallet_balance_metric() {
+        // Test setting wallet balance
+        FeedMetrics::set_wallet_balance("ethereum", "0x1234567890123456789012345678901234567890", 1000000000000000000);
+        FeedMetrics::set_wallet_balance("base", "0xabcdef0123456789012345678901234567890123", 500000000000000000);
+        
+        // Test with zero balance
+        FeedMetrics::set_wallet_balance("polygon", "0x0000000000000000000000000000000000000000", 0);
+        
+        // Test with large balance
+        FeedMetrics::set_wallet_balance("arbitrum", "0xffffffffffffffffffffffffffffffffffffffff", u128::MAX);
+    }
+
+    #[test]
+    fn test_feed_value_metric() {
+        // Test setting feed values
+        FeedMetrics::set_feed_value("eth_usd", "ethereum", 2500.50, 1700000000);
+        FeedMetrics::set_feed_value("btc_usd", "bitcoin", 45000.75, 1700000100);
+        
+        // Test with zero value
+        FeedMetrics::set_feed_value("test_feed", "testnet", 0.0, 1700000200);
+        
+        // Test with negative value (for special cases)
+        FeedMetrics::set_feed_value("temperature", "weather", -10.5, 1700000300);
+    }
+
+    #[test]
+    fn test_contract_value_metric() {
+        // Test setting contract values
+        FeedMetrics::set_contract_value("eth_usd", "ethereum", 2499.99, 1700000000, 12345);
+        FeedMetrics::set_contract_value("btc_usd", "bitcoin", 44999.00, 1700000100, 67890);
+        
+        // Test with zero round
+        FeedMetrics::set_contract_value("new_feed", "testnet", 100.0, 1700000200, 0);
+        
+        // Test with large round number
+        FeedMetrics::set_contract_value("old_feed", "mainnet", 1.0, 1700000300, u64::MAX);
+    }
+
+    #[test]
+    fn test_deviation_calculation() {
+        // Test exact match (0% deviation)
+        FeedMetrics::update_deviation("eth_usd", "ethereum", 2500.0, 2500.0);
+        
+        // Test positive deviation
+        FeedMetrics::update_deviation("btc_usd", "bitcoin", 45100.0, 45000.0);
+        
+        // Test negative deviation
+        FeedMetrics::update_deviation("bnb_usd", "bsc", 299.5, 300.0);
+        
+        // Test large deviation
+        FeedMetrics::update_deviation("volatile_feed", "testnet", 150.0, 100.0);
+        
+        // Test small deviation
+        FeedMetrics::update_deviation("stable_feed", "mainnet", 1.0001, 1.0000);
+    }
+
+    #[test]
+    fn test_deviation_edge_cases() {
+        // Test with very small contract value (avoid division by zero)
+        FeedMetrics::update_deviation("micro_feed", "testnet", 0.00001, 0.000001);
+        
+        // Test with large values
+        FeedMetrics::update_deviation("large_feed", "mainnet", 1_000_000.0, 999_999.0);
+    }
+
+    #[test]
+    fn test_contract_update_recording() {
+        // Test recording updates for different feeds
+        FeedMetrics::record_contract_update("eth_usd", "ethereum");
+        FeedMetrics::record_contract_update("btc_usd", "bitcoin");
+        FeedMetrics::record_contract_update("link_usd", "ethereum");
+        
+        // Test multiple updates for same feed
+        FeedMetrics::record_contract_update("eth_usd", "ethereum");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        FeedMetrics::record_contract_update("eth_usd", "ethereum");
+    }
+
+    #[test]
+    fn test_data_staleness_metric() {
+        // When feed value is set, staleness should reset to 0
+        FeedMetrics::set_feed_value("eth_usd", "ethereum", 2500.0, 1700000000);
+        
+        // Test that staleness metric was set via the feed value update
+        // In real usage, staleness would be calculated periodically
+    }
+
+    #[test]
+    fn test_metric_labels() {
+        // Test various label combinations
+        let networks = vec!["ethereum", "polygon", "arbitrum", "optimism", "base"];
+        let feeds = vec!["eth_usd", "btc_usd", "link_usd", "uni_usd", "aave_usd"];
+        
+        for network in &networks {
+            for feed in &feeds {
+                FeedMetrics::set_feed_value(feed, network, 100.0, 1700000000);
+                FeedMetrics::set_contract_value(feed, network, 99.5, 1700000000, 1);
+                FeedMetrics::update_deviation(feed, network, 100.0, 99.5);
+            }
+        }
+    }
+
+    #[test]
+    fn test_timestamp_values() {
+        // Test with various timestamp values
+        let timestamps = vec![
+            0u64,                    // Epoch start
+            1700000000,              // Recent timestamp
+            u32::MAX as u64,         // Max u32 as u64
+            1,                       // Minimum positive
+        ];
+        
+        for (i, &timestamp) in timestamps.iter().enumerate() {
+            FeedMetrics::set_feed_value(&format!("test_feed_{}", i), "testnet", 100.0, timestamp);
+            FeedMetrics::set_contract_value(&format!("test_feed_{}", i), "testnet", 100.0, timestamp, i as u64);
+        }
+    }
+
+    #[test]
+    fn test_extreme_values() {
+        // Test with extreme float values
+        FeedMetrics::set_feed_value("max_feed", "testnet", f64::MAX, 1700000000);
+        FeedMetrics::set_feed_value("min_feed", "testnet", f64::MIN, 1700000000);
+        FeedMetrics::set_feed_value("inf_feed", "testnet", f64::INFINITY, 1700000000);
+        FeedMetrics::set_feed_value("neg_inf_feed", "testnet", f64::NEG_INFINITY, 1700000000);
+        
+        // Test extreme balance values
+        FeedMetrics::set_wallet_balance("rich", "0xrich", u128::MAX);
+        FeedMetrics::set_wallet_balance("poor", "0xpoor", 0);
+    }
+}

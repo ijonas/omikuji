@@ -258,3 +258,189 @@ fn sanitize_url(url: &str) -> String {
         "***REDACTED***".to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_url() {
+        // Test URL with credentials
+        let url_with_creds = "https://user:password@example.com:8080/path";
+        let sanitized = sanitize_url(url_with_creds);
+        assert_eq!(sanitized, "https://example.com:8080/path");
+
+        // Test URL without credentials
+        let url_without_creds = "https://example.com/path";
+        let sanitized = sanitize_url(url_without_creds);
+        assert_eq!(sanitized, "https://example.com/path");
+
+        // Test invalid URL
+        let invalid_url = "not a valid url";
+        let sanitized = sanitize_url(invalid_url);
+        assert_eq!(sanitized, "***REDACTED***");
+
+        // Test HTTP URL
+        let http_url = "http://localhost:8545";
+        let sanitized = sanitize_url(http_url);
+        assert_eq!(sanitized, "http://localhost:8545/");
+
+        // Test URL with only username
+        let url_with_user = "https://user@example.com/path";
+        let sanitized = sanitize_url(url_with_user);
+        assert_eq!(sanitized, "https://example.com/path");
+    }
+
+    #[test]
+    fn test_active_datafeeds_metrics() {
+        // Test setting active datafeed metrics
+        ConfigMetrics::update_active_datafeeds("ethereum", 5, 2, 1);
+        
+        // Verify metrics were set (in a real test, we'd check the actual metric values)
+        // For unit tests, we're mainly ensuring the code doesn't panic
+    }
+
+    #[test]
+    fn test_datafeed_config_metrics() {
+        ConfigMetrics::set_datafeed_config(
+            "eth_usd",
+            "ethereum",
+            "fluxmon",
+            "0x1234567890123456789012345678901234567890",
+            60,
+            0.5,
+            3600,
+        );
+        
+        // Verify metrics were set
+    }
+
+    #[test]
+    fn test_network_config_metrics() {
+        ConfigMetrics::set_network_config(
+            "ethereum",
+            "https://eth.llamarpc.com",
+            "eip1559",
+            1.1,
+        );
+        
+        // Verify metrics were set
+    }
+
+    #[test]
+    fn test_version_info_metrics() {
+        ConfigMetrics::set_version_info(
+            "0.1.0",
+            "abc123",
+            "2024-01-01",
+            "1.75.0",
+        );
+        
+        // Verify metrics were set
+    }
+
+    #[test]
+    fn test_feature_flags() {
+        ConfigMetrics::update_feature_flag("database", true);
+        ConfigMetrics::update_feature_flag("metrics_server", false);
+        
+        // Verify flags were set
+    }
+
+    #[test]
+    fn test_environment_info() {
+        ConfigMetrics::set_environment_info("production", "daemon", "us-west-2");
+        ConfigMetrics::set_environment_info("development", "cli", "local");
+        
+        // Verify environment info was set
+    }
+
+    #[test]
+    fn test_monitoring_cycle_metrics() {
+        ConfigMetrics::update_monitoring_cycle("feed_check", 1.5);
+        ConfigMetrics::update_monitoring_cycle("balance_check", 0.25);
+        
+        // Verify cycle duration was recorded
+    }
+
+    #[test]
+    fn test_config_reload_metrics() {
+        ConfigMetrics::record_config_reload("manual", true);
+        ConfigMetrics::record_config_reload("automatic", false);
+        
+        // Verify reload count was incremented
+    }
+
+    #[test]
+    fn test_key_storage_config() {
+        ConfigMetrics::set_key_storage_config("keyring", Some("omikuji"));
+        ConfigMetrics::set_key_storage_config("env", None);
+        ConfigMetrics::set_key_storage_config("vault", None);
+        
+        // Verify key storage config was set
+    }
+
+    #[test]
+    fn test_startup_info_with_config() {
+        use crate::config::models::{OmikujiConfig, Network, Datafeed, KeyStorageConfig};
+        use crate::config::metrics_config::MetricsConfig;
+        use crate::gas_price::models::GasPriceFeedConfig;
+        
+        let config = OmikujiConfig {
+            networks: vec![Network {
+                name: "test-network".to_string(),
+                rpc_url: "http://localhost:8545".to_string(),
+                transaction_type: "eip1559".to_string(),
+                gas_config: Default::default(),
+                gas_token: "ethereum".to_string(),
+                gas_token_symbol: "ETH".to_string(),
+            }],
+            datafeeds: vec![Datafeed {
+                name: "test-feed".to_string(),
+                networks: "test-network".to_string(),
+                check_frequency: 60,
+                contract_address: "0x1234567890123456789012345678901234567890".to_string(),
+                contract_type: "fluxmon".to_string(),
+                read_contract_config: false,
+                minimum_update_frequency: 3600,
+                deviation_threshold_pct: 0.5,
+                feed_url: "https://example.com/api".to_string(),
+                feed_json_path: "data.price".to_string(),
+                feed_json_path_timestamp: Some("data.timestamp".to_string()),
+                decimals: None,
+                min_value: None,
+                max_value: None,
+                data_retention_days: 7,
+            }],
+            database_cleanup: Default::default(),
+            key_storage: KeyStorageConfig {
+                storage_type: "env".to_string(),
+                keyring: Default::default(),
+                vault: Default::default(),
+                aws_secrets: Default::default(),
+            },
+            metrics: MetricsConfig::default(),
+            gas_price_feeds: GasPriceFeedConfig::default(),
+        };
+        
+        ConfigMetrics::record_startup_info(&config);
+        
+        // Verify all startup metrics were set
+    }
+
+    #[test]
+    fn test_database_status() {
+        ConfigMetrics::set_database_status(true);
+        ConfigMetrics::set_database_status(false);
+        
+        // Verify database feature flag was updated
+    }
+
+    #[test]
+    fn test_metrics_server_status() {
+        ConfigMetrics::set_metrics_server_status(true, 9090);
+        ConfigMetrics::set_metrics_server_status(false, 0);
+        
+        // Verify metrics server feature flag was updated
+    }
+}

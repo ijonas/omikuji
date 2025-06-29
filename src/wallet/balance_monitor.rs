@@ -147,3 +147,170 @@ impl WalletBalanceMonitor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gas_price::models::{GasPriceFeedConfig, CoinGeckoConfig};
+
+    #[test]
+    fn test_wallet_balance_monitor_creation() {
+        // Create a minimal network manager for testing
+        let networks = vec![];
+        let network_manager = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(NetworkManager::new(&networks))
+            .unwrap();
+        let network_manager = Arc::new(network_manager);
+        
+        let monitor = WalletBalanceMonitor::new(network_manager.clone());
+        
+        assert_eq!(monitor.update_interval_seconds, 60);
+        assert!(monitor.gas_price_manager.is_none());
+        assert!(monitor.daily_spending_estimates.is_empty());
+    }
+
+    #[test]
+    fn test_wallet_balance_monitor_with_gas_price_manager() {
+        let networks = vec![];
+        let network_manager = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(NetworkManager::new(&networks))
+            .unwrap();
+        let network_manager = Arc::new(network_manager);
+        
+        let gas_config = GasPriceFeedConfig {
+            enabled: true,
+            update_frequency: 60,
+            provider: "coingecko".to_string(),
+            coingecko: CoinGeckoConfig {
+                api_key: None,
+                base_url: "https://api.coingecko.com/api/v3".to_string(),
+            },
+            fallback_to_cache: true,
+            persist_to_database: false,
+        };
+        let gas_price_manager = Arc::new(GasPriceManager::new(
+            gas_config,
+            HashMap::new(),
+            None,
+        ));
+        
+        let monitor = WalletBalanceMonitor::new(network_manager)
+            .with_gas_price_manager(gas_price_manager.clone());
+        
+        assert!(monitor.gas_price_manager.is_some());
+    }
+
+    #[test]
+    fn test_daily_spending_estimates() {
+        let networks = vec![];
+        let network_manager = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(NetworkManager::new(&networks))
+            .unwrap();
+        let network_manager = Arc::new(network_manager);
+        
+        let mut monitor = WalletBalanceMonitor::new(network_manager);
+        
+        // Test adding spending estimates
+        monitor.daily_spending_estimates.insert("network1".to_string(), 10.5);
+        monitor.daily_spending_estimates.insert("network2".to_string(), 25.0);
+        
+        assert_eq!(monitor.daily_spending_estimates.get("network1"), Some(&10.5));
+        assert_eq!(monitor.daily_spending_estimates.get("network2"), Some(&25.0));
+        assert_eq!(monitor.daily_spending_estimates.get("network3"), None);
+    }
+
+    #[test]
+    fn test_update_interval() {
+        let networks = vec![];
+        let network_manager = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(NetworkManager::new(&networks))
+            .unwrap();
+        let network_manager = Arc::new(network_manager);
+        
+        let monitor = WalletBalanceMonitor::new(network_manager);
+        assert_eq!(monitor.update_interval_seconds, 60);
+    }
+
+    #[tokio::test]
+    async fn test_update_network_balance_error_handling() {
+        let networks = vec![];
+        let network_manager = NetworkManager::new(&networks).await.unwrap();
+        let network_manager = Arc::new(network_manager);
+        
+        let monitor = WalletBalanceMonitor::new(network_manager.clone());
+        
+        // Test balance update with non-existent network
+        let result = monitor.update_network_balance("non-existent-network").await;
+        assert!(result.is_err());
+        
+        // Test error message contains expected text
+        let error_message = result.unwrap_err().to_string();
+        assert!(error_message.contains("Network not found") || 
+                error_message.contains("No wallet address found"));
+    }
+
+    #[test]
+    fn test_monitor_fields() {
+        let networks = vec![];
+        let network_manager = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(NetworkManager::new(&networks))
+            .unwrap();
+        let network_manager = Arc::new(network_manager);
+        
+        let gas_config = GasPriceFeedConfig {
+            enabled: true,
+            update_frequency: 30,
+            provider: "coingecko".to_string(),
+            coingecko: CoinGeckoConfig {
+                api_key: None,
+                base_url: "https://api.coingecko.com/api/v3".to_string(),
+            },
+            fallback_to_cache: true,
+            persist_to_database: false,
+        };
+        let gas_price_manager = Arc::new(GasPriceManager::new(
+            gas_config,
+            HashMap::new(),
+            None,
+        ));
+        
+        let mut monitor = WalletBalanceMonitor::new(network_manager.clone());
+        
+        // Test initial state
+        assert_eq!(monitor.update_interval_seconds, 60);
+        assert!(monitor.gas_price_manager.is_none());
+        assert!(monitor.daily_spending_estimates.is_empty());
+        
+        // Test with gas price manager
+        monitor = monitor.with_gas_price_manager(gas_price_manager);
+        assert!(monitor.gas_price_manager.is_some());
+        
+        // Test daily spending estimates
+        monitor.daily_spending_estimates.insert("eth-mainnet".to_string(), 50.0);
+        assert_eq!(monitor.daily_spending_estimates.len(), 1);
+        assert_eq!(monitor.daily_spending_estimates.get("eth-mainnet"), Some(&50.0));
+    }
+
+    #[test]
+    fn test_balance_conversion() {
+        // Test wei to native conversion
+        let balance_wei = 1_500_000_000_000_000_000u128; // 1.5 ETH in wei
+        let balance_native = balance_wei as f64 / 1e18;
+        assert!((balance_native - 1.5).abs() < 0.0000001);
+        
+        // Test balance in USD calculation
+        let price_usd = 2000.0;
+        let balance_usd = balance_native * price_usd;
+        assert!((balance_usd - 3000.0).abs() < 0.01);
+        
+        // Test runway calculation
+        let daily_spend = 100.0;
+        let runway_days = balance_usd / daily_spend;
+        assert!((runway_days - 30.0).abs() < 0.01);
+    }
+}

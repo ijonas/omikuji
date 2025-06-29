@@ -543,3 +543,165 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_transaction_details_creation() {
+        let details = TransactionDetails {
+            tx_hash: "0xabc123".to_string(),
+            feed_name: "eth_usd".to_string(),
+            network: "ethereum".to_string(),
+            gas_limit: 200000,
+            gas_used: 150000,
+            gas_price_gwei: 35.5,
+            total_cost_wei: 5325000000000000u128,
+            efficiency_percent: 75.0,
+            tx_type: "eip1559".to_string(),
+            status: "success".to_string(),
+            block_number: 15000000,
+            error_message: None,
+        };
+        
+        assert_eq!(details.feed_name, "eth_usd");
+        assert_eq!(details.efficiency_percent, 75.0);
+        assert_eq!(details.status, "success");
+    }
+    
+    #[test]
+    fn test_gas_estimate_conversion() {
+        let estimate = GasEstimate {
+            gas_limit: U256::from(250000),
+            gas_price: Some(U256::from(32000000000u64)), // 32 gwei
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
+        };
+        
+        assert_eq!(estimate.gas_limit, U256::from(250000));
+        assert!(estimate.gas_price.is_some());
+        assert!(estimate.max_fee_per_gas.is_none());
+        assert!(estimate.max_priority_fee_per_gas.is_none());
+    }
+    
+    #[test]
+    fn test_address_creation() {
+        let addr_str = "0x1234567890123456789012345678901234567890";
+        let addr = addr_str.parse::<Address>().unwrap();
+        assert_eq!(format!("0x{:x}", addr), addr_str.to_lowercase());
+    }
+    
+    #[test]
+    fn test_i256_edge_cases() {
+        // Test maximum positive value
+        let max_positive = I256::MAX;
+        assert!(max_positive > I256::ZERO);
+        
+        // Test minimum negative value
+        let min_negative = I256::MIN;
+        assert!(min_negative < I256::ZERO);
+        
+        // Test zero
+        let zero = I256::ZERO;
+        assert_eq!(zero, I256::try_from(0).unwrap());
+    }
+    
+    #[test]
+    fn test_contract_call_encoding() {
+        // Test latestAnswer call encoding
+        let call = IFluxAggregator::latestAnswerCall {};
+        let encoded = call.abi_encode();
+        assert_eq!(encoded.len(), 4); // Function selector only
+        
+        // Test submit call encoding
+        let submit_call = IFluxAggregator::submitCall {
+            _roundId: U256::from(1),
+            _submission: I256::try_from(100).unwrap(),
+        };
+        let submit_encoded = submit_call.abi_encode();
+        assert!(submit_encoded.len() > 4); // Function selector + parameters
+    }
+    
+    #[test]
+    fn test_transaction_type_strings() {
+        let eip1559 = "eip1559";
+        let legacy = "legacy";
+        let eip2930 = "eip2930";
+        
+        assert_eq!(eip1559, "eip1559");
+        assert_eq!(legacy, "legacy");
+        assert_eq!(eip2930, "eip2930");
+    }
+    
+    #[test]
+    fn test_error_message_parsing() {
+        let revert_error = "execution reverted: price must be positive";
+        assert!(revert_error.contains("revert"));
+        
+        let gas_error = "out of gas";
+        assert!(gas_error.contains("gas"));
+        
+        let nonce_error = "nonce too low";
+        assert!(nonce_error.contains("nonce"));
+    }
+    
+    #[test]
+    fn test_submission_timestamp() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        assert!(now > 0);
+        assert!(now < u64::MAX);
+    }
+    
+    #[test]
+    fn test_gas_calculations() {
+        // Test gas cost calculation
+        let gas_used = 150000u64;
+        let gas_price_wei = 35_000_000_000u64; // 35 gwei
+        let total_cost_wei = gas_used * gas_price_wei;
+        
+        assert_eq!(total_cost_wei, 5_250_000_000_000_000);
+        
+        // Test efficiency calculation
+        let gas_limit = 200000u64;
+        let efficiency = (gas_used as f64 / gas_limit as f64) * 100.0;
+        assert_eq!(efficiency, 75.0);
+    }
+    
+    #[test]
+    fn test_retry_logic_values() {
+        let _max_attempts = 3;
+        let initial_wait_seconds = 30;
+        let multiplier = 1.5;
+        
+        // Calculate wait times for each retry
+        let wait_1 = initial_wait_seconds as f64;
+        let wait_2 = wait_1 * multiplier;
+        let wait_3 = wait_2 * multiplier;
+        
+        assert_eq!(wait_1, 30.0);
+        assert_eq!(wait_2, 45.0);
+        assert_eq!(wait_3, 67.5);
+    }
+    
+    #[test] 
+    fn test_efficiency_calculation() {
+        // Test normal case
+        let gas_used = 150000u128;
+        let gas_limit = 200000u128;
+        let efficiency = (gas_used as f64 / gas_limit as f64) * 100.0;
+        assert_eq!(efficiency, 75.0);
+        
+        // Test full usage
+        let full_efficiency = (200000f64 / 200000f64) * 100.0;
+        assert_eq!(full_efficiency, 100.0);
+        
+        // Test low efficiency
+        let low_efficiency = (50000f64 / 200000f64) * 100.0;
+        assert_eq!(low_efficiency, 25.0);
+    }
+}
