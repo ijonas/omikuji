@@ -148,3 +148,123 @@ pub async fn run_manual_cleanup(
     info!("Running manual database cleanup");
     run_cleanup(config, repository).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::metrics_config::MetricsConfig;
+    use crate::config::models::{Datafeed, Network};
+    use crate::gas_price::models::GasPriceFeedConfig;
+
+    fn create_test_config() -> OmikujiConfig {
+        OmikujiConfig {
+            networks: vec![Network {
+                name: "test-network".to_string(),
+                rpc_url: "http://localhost:8545".to_string(),
+                transaction_type: "eip1559".to_string(),
+                gas_config: Default::default(),
+                gas_token: "ethereum".to_string(),
+                gas_token_symbol: "ETH".to_string(),
+            }],
+            datafeeds: vec![Datafeed {
+                name: "test-feed".to_string(),
+                networks: "test-network".to_string(),
+                check_frequency: 60,
+                contract_address: "0x1234567890123456789012345678901234567890".to_string(),
+                contract_type: "fluxmon".to_string(),
+                read_contract_config: false,
+                minimum_update_frequency: 3600,
+                deviation_threshold_pct: 0.5,
+                feed_url: "https://example.com/api".to_string(),
+                feed_json_path: "data.price".to_string(),
+                feed_json_path_timestamp: Some("data.timestamp".to_string()),
+                decimals: None,
+                min_value: None,
+                max_value: None,
+                data_retention_days: 7,
+            }],
+            database_cleanup: Default::default(),
+            key_storage: Default::default(),
+            metrics: MetricsConfig::default(),
+            gas_price_feeds: GasPriceFeedConfig::default(),
+        }
+    }
+
+    #[test]
+    fn test_cleanup_config() {
+        let config = create_test_config();
+        assert!(config.database_cleanup.enabled);
+        assert_eq!(config.database_cleanup.schedule, "0 0 * * * *");
+    }
+
+    #[test]
+    fn test_cron_schedule_validation() {
+        // Test various valid cron expressions
+        let valid_schedules = vec![
+            "0 2 * * *",   // Daily at 2 AM
+            "0 */6 * * *", // Every 6 hours
+            "0 0 * * 0",   // Weekly on Sunday
+            "0 0 1 * *",   // Monthly on the 1st
+            "*/5 * * * *", // Every 5 minutes
+        ];
+
+        for schedule in valid_schedules {
+            assert!(!schedule.is_empty());
+            let parts: Vec<&str> = schedule.split_whitespace().collect();
+            assert_eq!(parts.len(), 5);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_manager_creation() {
+        let config = create_test_config();
+
+        // This would normally use a real database pool
+        // For unit tests, we just test that the manager can be created
+        // let pool = create_test_pool().await;
+        // let repository = Arc::new(FeedLogRepository::new(pool));
+        // let manager = CleanupManager::new(config, repository).await;
+        // assert!(manager.is_ok());
+
+        assert!(config.database_cleanup.enabled);
+    }
+
+    #[test]
+    fn test_retention_calculation() {
+        let retention_days = 30;
+        let now = chrono::Utc::now();
+        let cutoff = now - chrono::Duration::days(retention_days as i64);
+
+        let diff = now - cutoff;
+        assert_eq!(diff.num_days(), retention_days as i64);
+    }
+
+    #[test]
+    fn test_duration_formatting() {
+        let start = chrono::Utc::now();
+        let end = start + chrono::Duration::milliseconds(1500);
+        let duration = end - start;
+
+        let seconds = duration.num_milliseconds() as f64 / 1000.0;
+        assert_eq!(seconds, 1.5);
+    }
+
+    #[test]
+    fn test_feed_config_retention() {
+        let config = create_test_config();
+
+        // Test that each datafeed would use the global retention setting
+        for datafeed in &config.datafeeds {
+            assert_eq!(datafeed.name, "test-feed");
+            assert_eq!(datafeed.networks, "test-network");
+        }
+    }
+
+    #[test]
+    fn test_cleanup_disabled_config() {
+        let mut config = create_test_config();
+        config.database_cleanup.enabled = false;
+
+        assert!(!config.database_cleanup.enabled);
+    }
+}

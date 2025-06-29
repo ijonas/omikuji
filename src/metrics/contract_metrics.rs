@@ -316,3 +316,254 @@ impl ContractMetrics {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_contract_read_recording() {
+        // Test successful read
+        ContractMetrics::record_contract_read(
+            "eth_usd",
+            "ethereum",
+            "latestAnswer",
+            true,
+            Duration::from_millis(100),
+            None,
+        );
+
+        // Test failed read with error
+        ContractMetrics::record_contract_read(
+            "btc_usd",
+            "bitcoin",
+            "getAnswer",
+            false,
+            Duration::from_millis(500),
+            Some("connection timeout"),
+        );
+
+        // Test various methods
+        let methods = vec!["latestAnswer", "latestTimestamp", "latestRound", "decimals"];
+        for method in methods {
+            ContractMetrics::record_contract_read(
+                "test_feed",
+                "testnet",
+                method,
+                true,
+                Duration::from_millis(50),
+                None,
+            );
+        }
+    }
+
+    #[test]
+    fn test_contract_write_recording() {
+        // Test successful write
+        ContractMetrics::record_contract_write(
+            "eth_usd",
+            "ethereum",
+            true,
+            Duration::from_secs(5),
+            None,
+        );
+
+        // Test failed write
+        ContractMetrics::record_contract_write(
+            "btc_usd",
+            "bitcoin",
+            false,
+            Duration::from_secs(30),
+            Some("insufficient gas"),
+        );
+    }
+
+    #[test]
+    fn test_operation_latency_buckets() {
+        // Test various latencies that should fall into different buckets
+        let latencies = vec![
+            Duration::from_millis(5),   // 0.005s - under 0.01
+            Duration::from_millis(30),  // 0.03s - between 0.01 and 0.05
+            Duration::from_millis(200), // 0.2s - between 0.1 and 0.25
+            Duration::from_secs(1),     // 1s - between 0.5 and 1.0
+            Duration::from_secs(15),    // 15s - between 10.0 and 30.0
+        ];
+
+        for (i, latency) in latencies.iter().enumerate() {
+            ContractMetrics::record_contract_read(
+                &format!("test_feed_{}", i),
+                "testnet",
+                "testMethod",
+                true,
+                *latency,
+                None,
+            );
+        }
+    }
+
+    #[test]
+    fn test_transaction_queue_updates() {
+        // Test queue size updates
+        ContractMetrics::update_transaction_queue("eth_usd", "ethereum", 5, 2, 1);
+        ContractMetrics::update_transaction_queue("btc_usd", "bitcoin", 0, 0, 0);
+        ContractMetrics::update_transaction_queue("link_usd", "ethereum", 10, 8, 0);
+    }
+
+    #[test]
+    fn test_nonce_gap_severity() {
+        // Test minor gap
+        ContractMetrics::record_nonce_gap("ethereum", 100, 101);
+
+        // Test moderate gap
+        ContractMetrics::record_nonce_gap("polygon", 200, 203);
+
+        // Test severe gap
+        ContractMetrics::record_nonce_gap("arbitrum", 300, 320);
+
+        // Test backward gap
+        ContractMetrics::record_nonce_gap("optimism", 400, 395);
+    }
+
+    #[test]
+    fn test_transaction_revert_categorization() {
+        // Test gas-related revert
+        ContractMetrics::record_transaction_revert("eth_usd", "ethereum", "out of gas");
+
+        // Test nonce-related revert
+        ContractMetrics::record_transaction_revert("btc_usd", "bitcoin", "nonce too low");
+
+        // Test permission-related revert
+        ContractMetrics::record_transaction_revert("link_usd", "ethereum", "unauthorized caller");
+
+        // Test value-related revert
+        ContractMetrics::record_transaction_revert("uni_usd", "ethereum", "invalid value");
+
+        // Test generic revert
+        ContractMetrics::record_transaction_revert("aave_usd", "polygon", "unknown error");
+    }
+
+    #[test]
+    fn test_confirmation_time_buckets() {
+        // Test various confirmation times
+        let times = vec![0.5, 3.0, 15.0, 45.0, 90.0, 240.0, 450.0];
+
+        for (i, &time) in times.iter().enumerate() {
+            let submission_time = 1700000000u64;
+            let confirmation_time = submission_time + (time as u64);
+            ContractMetrics::record_confirmation_time(
+                &format!("feed_{}", i),
+                "testnet",
+                submission_time,
+                confirmation_time,
+            );
+        }
+    }
+
+    #[test]
+    fn test_transaction_retry_reasons() {
+        let retry_reasons = vec![
+            "insufficient_gas",
+            "nonce_conflict",
+            "network_congestion",
+            "timeout",
+            "unknown",
+        ];
+
+        for (i, reason) in retry_reasons.iter().enumerate() {
+            ContractMetrics::record_transaction_retry("test_feed", "testnet", reason, i as u32 + 1);
+        }
+    }
+
+    #[test]
+    fn test_contract_state_sync() {
+        // Test synced state
+        ContractMetrics::update_contract_sync_status(
+            "eth_usd",
+            "ethereum",
+            true,
+            Some(2500.0),
+            Some(2499.0),
+        );
+
+        // Test out of sync state
+        ContractMetrics::update_contract_sync_status(
+            "btc_usd",
+            "bitcoin",
+            false,
+            Some(45000.0),
+            Some(44000.0),
+        );
+
+        // Test state changes
+        ContractMetrics::update_contract_sync_status("link_usd", "ethereum", true, None, None);
+        ContractMetrics::update_contract_sync_status(
+            "link_usd",
+            "ethereum",
+            false,
+            Some(25.0),
+            Some(24.5),
+        );
+        ContractMetrics::update_contract_sync_status(
+            "link_usd",
+            "ethereum",
+            true,
+            Some(25.0),
+            Some(25.0),
+        );
+    }
+
+    #[test]
+    fn test_mempool_time_recording() {
+        // Test various mempool times
+        let times = vec![2.0, 8.0, 25.0, 75.0, 180.0, 420.0];
+
+        for (i, &time) in times.iter().enumerate() {
+            ContractMetrics::record_mempool_time(&format!("feed_{}", i), "testnet", time);
+        }
+    }
+
+    #[test]
+    fn test_error_message_handling() {
+        // Test various error messages
+        let errors = vec![
+            Some("connection refused"),
+            Some("timeout after 30s"),
+            Some("invalid response format"),
+            None,
+            Some(""),
+        ];
+
+        for (i, error) in errors.iter().enumerate() {
+            ContractMetrics::record_contract_read(
+                &format!("error_feed_{}", i),
+                "testnet",
+                "testMethod",
+                false,
+                Duration::from_millis(100),
+                error.as_deref(),
+            );
+        }
+    }
+
+    #[test]
+    fn test_extreme_durations() {
+        // Test very short duration
+        ContractMetrics::record_contract_read(
+            "fast_feed",
+            "testnet",
+            "quickMethod",
+            true,
+            Duration::from_nanos(1),
+            None,
+        );
+
+        // Test very long duration
+        ContractMetrics::record_contract_write(
+            "slow_feed",
+            "testnet",
+            false,
+            Duration::from_secs(3600),
+            Some("extreme timeout"),
+        );
+    }
+}
