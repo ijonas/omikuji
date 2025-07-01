@@ -183,6 +183,7 @@ mod tests {
             key_storage: Default::default(),
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
+            scheduled_tasks: vec![],
         };
 
         assert!(config.database_cleanup.enabled);
@@ -223,6 +224,7 @@ mod tests {
             key_storage: Default::default(),
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
+            scheduled_tasks: vec![],
         };
 
         // Mock repository for testing

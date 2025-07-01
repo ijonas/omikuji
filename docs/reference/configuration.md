@@ -258,15 +258,116 @@ datafeeds:
     feed_json_path_timestamp: data.epoch
 ```
 
+## Scheduled Tasks Section
+
+Configure automatic execution of smart contract functions on a time-based schedule.
+
+```yaml
+scheduled_tasks:
+  - name: <string>                    # Required: Unique task identifier
+    network: <string>                 # Required: Network to execute on
+    schedule: <string>                # Required: Cron expression
+    check_condition:                  # Optional: Condition to check before execution
+      contract_address: <string>      # Required: Contract to check
+      property: <string>              # Option 1: Boolean property name
+      function: <string>              # Option 2: Parameterless view function
+      expected_value: <any>           # Required: Expected return value
+    target_function:                  # Required: Function to execute
+      contract_address: <string>      # Required: Contract address
+      function: <string>              # Required: Function signature
+      parameters: <array>             # Required: Function parameters
+    gas_config:                       # Optional: Gas configuration
+      <gas_options>
+```
+
+### Scheduled Task Fields
+
+#### `name` (required)
+- Type: `string`
+- Description: Unique identifier for the task
+- Example: `daily_rewards`, `price_update`
+
+#### `network` (required)
+- Type: `string`
+- Description: Network name where the task executes (must match a configured network)
+- Example: `ethereum`, `polygon`
+
+#### `schedule` (required)
+- Type: `string`
+- Description: Cron expression defining when to execute
+- Format: `minute hour day month weekday`
+- Examples:
+  - `0 * * * *` - Every hour
+  - `0 0 * * *` - Daily at midnight
+  - `*/5 * * * *` - Every 5 minutes
+
+#### `check_condition` (optional)
+- Type: `object`
+- Description: Condition to evaluate before execution
+- Fields:
+  - `contract_address`: Contract to read from
+  - `property`: Name of boolean public property OR
+  - `function`: Parameterless view function signature (e.g., `canExecute()`)
+  - `expected_value`: Value to compare against (must match type)
+
+#### `target_function` (required)
+- Type: `object`
+- Description: Smart contract function to execute
+- Fields:
+  - `contract_address`: Target contract address
+  - `function`: Function signature with parameter types (e.g., `transfer(address,uint256)`)
+  - `parameters`: Array of parameter values
+
+#### `parameters`
+- Type: `array`
+- Description: Function parameters with types
+- Format:
+  ```yaml
+  parameters:
+    - value: <any>      # The parameter value
+      type: <string>    # The Solidity type
+  ```
+- Supported types:
+  - `uint256`: Unsigned integer
+  - `address`: Ethereum address
+  - `bool`: Boolean value
+  - `address[]`: Array of addresses
+
+### Example Scheduled Task
+
+```yaml
+scheduled_tasks:
+  - name: "compound_yield"
+    network: "ethereum-mainnet"
+    schedule: "0 */6 * * *"  # Every 6 hours
+    check_condition:
+      contract_address: "0xYieldContract"
+      function: "hasYieldToCompound()"
+      expected_value: true
+    target_function:
+      contract_address: "0xYieldContract"
+      function: "compound(uint256,address[])"
+      parameters:
+        - value: 1000000
+          type: "uint256"
+        - value: ["0xToken1", "0xToken2"]
+          type: "address[]"
+    gas_config:
+      max_gas_price_gwei: 50
+      gas_limit: 300000
+```
+
 ## Validation Rules
 
-1. **Unique Names**: All network and datafeed names must be unique
-2. **Network References**: Datafeed networks must reference existing network names
+1. **Unique Names**: All network, datafeed, and scheduled task names must be unique
+2. **Network References**: Datafeed networks and scheduled task networks must reference existing network names
 3. **Valid Addresses**: Contract addresses must be valid Ethereum addresses
-4. **URL Format**: Feed URLs must be valid HTTP/HTTPS URLs
-5. **Update Triggers**: At least one of `minimum_update_frequency` or `deviation_threshold_pct` must be set
-6. **Decimal Range**: Decimals must be between 0 and 18
-7. **Positive Values**: Frequencies, percentages, and gas values must be positive
+4. **Cron Expressions**: Schedule fields must be valid cron expressions
+5. **Function Signatures**: Function signatures must include parameter types in parentheses
+6. **URL Format**: Feed URLs must be valid HTTP/HTTPS URLs
+7. **Update Triggers**: At least one of `minimum_update_frequency` or `deviation_threshold_pct` must be set
+8. **Decimal Range**: Decimals must be between 0 and 18
+9. **Positive Values**: Frequencies, percentages, and gas values must be positive
 
 ## Default Locations
 

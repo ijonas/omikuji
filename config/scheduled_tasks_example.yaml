@@ -1,0 +1,113 @@
+# Example configuration for scheduled tasks in Omikuji
+# This file demonstrates how to configure automatic smart contract function execution
+
+networks:
+  - name: ethereum-mainnet
+    rpc_url: https://eth.llamarpc.com
+    transaction_type: eip1559
+
+  - name: polygon
+    rpc_url: https://polygon-rpc.com
+    transaction_type: eip1559
+
+# Scheduled tasks execute smart contract functions on a time-based schedule
+# with optional condition checks before execution
+scheduled_tasks:
+  # Example 1: Daily reward distribution
+  - name: "daily_rewards"
+    network: "ethereum-mainnet"
+    schedule: "0 0 * * *"  # Daily at midnight UTC (cron format)
+    
+    # Optional: Check a condition before executing
+    check_condition:
+      contract_address: "0x1234567890123456789012345678901234567890"
+      # Check a boolean property
+      property: "rewardsReady"
+      expected_value: true
+    
+    # The function to execute
+    target_function:
+      contract_address: "0x1234567890123456789012345678901234567890"
+      function: "distributeRewards()"
+      parameters: []
+    
+    # Optional gas configuration
+    gas_config:
+      max_gas_price_gwei: 100
+      gas_limit: 500000
+      priority_fee_gwei: 2
+
+  # Example 2: Hourly price update with parameters
+  - name: "price_oracle_update"
+    network: "polygon"
+    schedule: "0 * * * *"  # Every hour
+    
+    # Check if update is needed using a view function
+    check_condition:
+      contract_address: "0xabcdef1234567890123456789012345678901234"
+      function: "needsUpdate()"  # Must be parameterless and return bool
+      expected_value: true
+    
+    target_function:
+      contract_address: "0xabcdef1234567890123456789012345678901234"
+      function: "updatePrice(uint256,address[])"
+      parameters:
+        - value: 1000000  # Will be encoded as uint256
+          type: "uint256"
+        - value: ["0x1111111111111111111111111111111111111111", "0x2222222222222222222222222222222222222222"]
+          type: "address[]"
+
+  # Example 3: Compound interest every 6 hours
+  - name: "compound_yield"
+    network: "ethereum-mainnet"
+    schedule: "0 */6 * * *"  # Every 6 hours
+    
+    # No condition check - always execute
+    target_function:
+      contract_address: "0x9876543210987654321098765432109876543210"
+      function: "compound()"
+      parameters: []
+
+  # Example 4: Weekly governance execution
+  - name: "execute_governance"
+    network: "ethereum-mainnet"
+    schedule: "0 0 * * 0"  # Weekly on Sunday at midnight
+    
+    check_condition:
+      contract_address: "0xGOVERNANCE_CONTRACT"
+      function: "hasExecutableProposals()"
+      expected_value: true
+    
+    target_function:
+      contract_address: "0xGOVERNANCE_CONTRACT"
+      function: "executeProposals(uint256)"
+      parameters:
+        - value: 10  # Execute up to 10 proposals
+          type: "uint256"
+
+# Cron Expression Format:
+# ┌───────────── minute (0 - 59)
+# │ ┌───────────── hour (0 - 23)
+# │ │ ┌───────────── day of the month (1 - 31)
+# │ │ │ ┌───────────── month (1 - 12)
+# │ │ │ │ ┌───────────── day of the week (0 - 6) (Sunday to Saturday)
+# │ │ │ │ │
+# * * * * *
+#
+# Examples:
+# "*/5 * * * *"     - Every 5 minutes
+# "0 * * * *"       - Every hour
+# "0 0 * * *"       - Daily at midnight
+# "0 0 * * 0"       - Weekly on Sunday
+# "0 0 1 * *"       - Monthly on the 1st
+# "30 2 * * *"      - Daily at 2:30 AM
+
+# Parameter Types Supported:
+# - uint256: Unsigned integers (as number or string)
+# - address: Ethereum addresses (as hex string)
+# - bool: Boolean values (true/false)
+# - address[]: Array of addresses
+# More types can be added as needed
+
+# Minimal datafeeds configuration (required by Omikuji)
+datafeeds: []

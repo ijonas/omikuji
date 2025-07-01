@@ -4,6 +4,7 @@ use validator::{Validate, ValidationError};
 
 use super::metrics_config::MetricsConfig;
 use crate::gas_price::models::GasPriceFeedConfig;
+use crate::scheduled_tasks::models::ScheduledTask;
 
 /// The main configuration structure for Omikuji
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -33,6 +34,10 @@ pub struct OmikujiConfig {
     /// Gas price feed configuration
     #[serde(default)]
     pub gas_price_feeds: GasPriceFeedConfig,
+
+    /// Scheduled tasks configuration
+    #[serde(default)]
+    pub scheduled_tasks: Vec<ScheduledTask>,
 }
 
 /// Configuration for database cleanup task

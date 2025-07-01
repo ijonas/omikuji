@@ -216,5 +216,6 @@ fn create_test_config() -> OmikujiConfig {
                 api_key: None,
             },
         },
+        scheduled_tasks: vec![],
     }
 }

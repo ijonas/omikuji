@@ -13,6 +13,7 @@ mod gas;
 mod gas_price;
 mod metrics;
 mod network;
+mod scheduled_tasks;
 mod ui;
 mod wallet;
 
@@ -360,6 +361,26 @@ async fn main() -> Result<()> {
 
     feed_manager.start().await;
 
+    // Initialize and start scheduled task manager
+    let scheduled_task_manager = if !config.scheduled_tasks.is_empty() {
+        info!("Initializing scheduled task manager with {} tasks", config.scheduled_tasks.len());
+        
+        let task_manager = scheduled_tasks::ScheduledTaskManager::new(
+            config.scheduled_tasks.clone(),
+            Arc::clone(&network_manager),
+        )
+        .await
+        .context("Failed to create scheduled task manager")?;
+        
+        task_manager.start().await
+            .context("Failed to start scheduled task manager")?;
+        
+        Some(Arc::new(task_manager))
+    } else {
+        info!("No scheduled tasks configured");
+        None
+    };
+
     // Start Prometheus metrics server
     if let Err(e) = metrics::start_metrics_server(9090).await {
         error!("Failed to start metrics server: {}", e);
@@ -401,6 +422,15 @@ async fn main() -> Result<()> {
     // Keep the application running
     tokio::signal::ctrl_c().await?;
     info!("Received shutdown signal, stopping...");
+
+    // Stop scheduled task manager if running
+    if let Some(task_manager) = scheduled_task_manager {
+        if let Err(e) = task_manager.stop().await {
+            error!("Error stopping scheduled task manager: {}", e);
+        } else {
+            info!("Scheduled task manager stopped successfully");
+        }
+    }
 
     // Stop cleanup manager if running
     if let Some(mut cleanup_manager) = cleanup_manager {
@@ -447,6 +477,7 @@ mod tests {
             },
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
+            scheduled_tasks: vec![],
         }
     }
 

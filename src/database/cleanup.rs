@@ -187,6 +187,7 @@ mod tests {
             key_storage: Default::default(),
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
+            scheduled_tasks: vec![],
         }
     }
 
