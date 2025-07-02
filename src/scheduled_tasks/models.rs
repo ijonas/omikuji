@@ -56,11 +56,15 @@ impl ScheduledTask {
 
         // Validate addresses
         self.validate_address(&self.target_function.contract_address)?;
-        
+
         if let Some(condition) = &self.check_condition {
             match condition {
-                CheckCondition::Property { contract_address, .. } |
-                CheckCondition::Function { contract_address, .. } => {
+                CheckCondition::Property {
+                    contract_address, ..
+                }
+                | CheckCondition::Function {
+                    contract_address, ..
+                } => {
                     self.validate_address(contract_address)?;
                 }
             }
@@ -70,8 +74,9 @@ impl ScheduledTask {
     }
 
     fn validate_address(&self, address: &str) -> Result<(), String> {
-        address.parse::<Address>()
-            .map_err(|e| format!("Invalid address '{}': {}", address, e))?;
+        address
+            .parse::<Address>()
+            .map_err(|e| format!("Invalid address '{address}': {e}"))?;
         Ok(())
     }
 }
@@ -100,7 +105,7 @@ mod tests {
         };
 
         match task.validate() {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(e) => panic!("Validation failed: {}", e),
         }
     }

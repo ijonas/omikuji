@@ -65,12 +65,14 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<OmikujiConfig, Conf
                 task.name, task.network
             )));
         }
-        
+
         // Validate the scheduled task
-        task.validate().map_err(|e| ConfigError::Other(format!(
-            "Scheduled task '{}' validation failed: {}",
-            task.name, e
-        )))?;
+        task.validate().map_err(|e| {
+            ConfigError::Other(format!(
+                "Scheduled task '{}' validation failed: {}",
+                task.name, e
+            ))
+        })?;
     }
 
     Ok(config)
