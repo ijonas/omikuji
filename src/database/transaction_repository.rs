@@ -31,7 +31,6 @@ pub struct TransactionLog {
     pub created_at: DateTime<Utc>,
 }
 
-
 impl TransactionLogRepository {
     /// Create a new repository instance
     pub fn new(pool: DatabasePool) -> Self {
@@ -88,7 +87,6 @@ impl TransactionLogRepository {
 
         Ok(result.0)
     }
-
 }
 
 #[cfg(test)]
@@ -139,7 +137,6 @@ mod tests {
         assert_eq!(log.efficiency_percent, 80.0);
         assert_eq!(log.status, "success");
     }
-
 
     #[test]
     fn test_transaction_details_conversion() {
@@ -260,4 +257,3 @@ mod tests {
             .contains("Insufficient funds"));
     }
 }
-

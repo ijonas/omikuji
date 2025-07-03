@@ -217,7 +217,6 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
         Ok(decoded._0)
     }
 
-
     /// Submit a new price to the FluxAggregator contract with gas estimation and retry logic
     pub async fn submit_price_with_gas_estimation(
         &self,

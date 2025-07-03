@@ -74,7 +74,6 @@ mod tests {
         assert!(!log.network_error);
     }
 
-
     // Mock database connection for testing
     #[cfg(test)]
     mod mock_db {

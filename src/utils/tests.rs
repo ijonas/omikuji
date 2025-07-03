@@ -22,12 +22,10 @@ mod transaction_logger_tests {
         TransactionLogger::log_confirmation(tx_hash, gas_used);
     }
 
-
     #[test]
     fn test_log_failure() {
         TransactionLogger::log_failure("datafeed", "btc_usd", "Network connection timeout");
     }
-
 
     #[test]
     fn test_log_fee_bump() {
@@ -35,7 +33,6 @@ mod transaction_logger_tests {
         let new_price = U256::from(25_000_000_000u64);
         TransactionLogger::log_fee_bump(1, old_price, new_price);
     }
-
 
     #[test]
     fn test_log_condition_met() {

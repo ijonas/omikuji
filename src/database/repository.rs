@@ -65,7 +65,6 @@ impl FeedLogRepository {
         Ok(record)
     }
 
-
     /// Deletes feed logs older than the specified number of days
     #[allow(dead_code)]
     pub async fn delete_older_than(
@@ -102,13 +101,11 @@ impl FeedLogRepository {
 
         Ok(deleted_count)
     }
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn test_save_query_format() {
@@ -141,7 +138,6 @@ mod tests {
         assert!(query.contains("NOW()"));
     }
 
-
     #[test]
     fn test_delete_older_than_cutoff_calculation() {
         let days = 30u32;
@@ -151,5 +147,4 @@ mod tests {
         let duration = now - cutoff_date;
         assert_eq!(duration.num_days(), 30);
     }
-
 }

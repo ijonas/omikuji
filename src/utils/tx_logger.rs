@@ -33,7 +33,6 @@ impl TransactionLogger {
         );
     }
 
-
     /// Log transaction failure
     pub fn log_failure(context_type: &str, context_name: &str, error: &str) {
         error!(
@@ -42,7 +41,6 @@ impl TransactionLogger {
         );
     }
 
-
     /// Log fee bumping attempt
     pub fn log_fee_bump(attempt: u32, old_price: U256, new_price: U256) {
         warn!(
@@ -50,7 +48,6 @@ impl TransactionLogger {
             attempt, old_price, new_price
         );
     }
-
 
     /// Log when conditions are met for execution
     pub fn log_condition_met(context_type: &str, context_name: &str, condition_desc: &str) {
