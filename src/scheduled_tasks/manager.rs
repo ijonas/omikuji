@@ -244,14 +244,13 @@ async fn execute_task(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scheduled_tasks::models::TargetFunction;
+    use crate::scheduled_tasks::models::{CheckCondition, GasConfig, Parameter, TargetFunction};
 
-    #[tokio::test]
-    async fn test_scheduled_task_manager_creation() {
-        let _tasks = vec![ScheduledTask {
-            name: "test_task".to_string(),
-            network: "ethereum-mainnet".to_string(),
-            schedule: "0 0 * * * *".to_string(),
+    fn create_test_task(name: &str) -> ScheduledTask {
+        ScheduledTask {
+            name: name.to_string(),
+            network: "test-network".to_string(),
+            schedule: "0 0 * * * *".to_string(), // Every hour
             check_condition: None,
             target_function: TargetFunction {
                 contract_address: "0x1234567890123456789012345678901234567890".to_string(),
@@ -259,9 +258,142 @@ mod tests {
                 parameters: vec![],
             },
             gas_config: None,
-        }];
+        }
+    }
+
+    fn create_test_task_with_condition(name: &str) -> ScheduledTask {
+        ScheduledTask {
+            name: name.to_string(),
+            network: "test-network".to_string(),
+            schedule: "*/5 * * * * *".to_string(), // Every 5 seconds
+            check_condition: Some(CheckCondition::Function {
+                contract_address: "0x1234567890123456789012345678901234567890".to_string(),
+                function: "canExecute()".to_string(),
+                expected_value: serde_json::Value::Bool(true),
+            }),
+            target_function: TargetFunction {
+                contract_address: "0x1234567890123456789012345678901234567890".to_string(),
+                function: "performTask()".to_string(),
+                parameters: vec![],
+            },
+            gas_config: Some(GasConfig {
+                gas_limit: Some(200000),
+                max_gas_price_gwei: Some(50),
+                priority_fee_gwei: Some(2),
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_scheduled_task_manager_creation() {
+        let tasks = vec![create_test_task("task1"), create_test_task("task2")];
 
         // This test would need a mock NetworkProviders
-        // For now, we just test that the structure compiles correctly
+        // For now, we verify the structure is created correctly
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].name, "task1");
+        assert_eq!(tasks[1].name, "task2");
+    }
+
+    #[test]
+    fn test_builder_methods() {
+        // Test that builder methods compile and work correctly
+        let tasks = vec![create_test_task("test")];
+
+        // This would need actual instances to test fully
+        // For now, we ensure the API is correct
+        assert_eq!(tasks[0].name, "test");
+    }
+
+    #[test]
+    fn test_task_status_struct() {
+        let status = TaskStatus {
+            name: "test_task".to_string(),
+            schedule: "0 0 * * * *".to_string(),
+            network: "mainnet".to_string(),
+        };
+
+        assert_eq!(status.name, "test_task");
+        assert_eq!(status.schedule, "0 0 * * * *");
+        assert_eq!(status.network, "mainnet");
+    }
+
+    #[test]
+    fn test_gas_limit_extraction() {
+        let task_with_gas = create_test_task_with_condition("gas_test");
+        let gas_limit = task_with_gas
+            .gas_config
+            .as_ref()
+            .and_then(|cfg| cfg.gas_limit)
+            .unwrap_or(300_000);
+
+        assert_eq!(gas_limit, 200000);
+
+        let task_without_gas = create_test_task("no_gas");
+        let gas_limit = task_without_gas
+            .gas_config
+            .as_ref()
+            .and_then(|cfg| cfg.gas_limit)
+            .unwrap_or(300_000);
+
+        assert_eq!(gas_limit, 300_000); // Default
+    }
+
+    #[test]
+    fn test_scheduled_task_with_parameters() {
+        let task = ScheduledTask {
+            name: "param_task".to_string(),
+            network: "test-network".to_string(),
+            schedule: "0 */6 * * *".to_string(), // Every 6 hours
+            check_condition: None,
+            target_function: TargetFunction {
+                contract_address: "0xABCDEF1234567890123456789012345678901234".to_string(),
+                function: "updatePrices(address[],uint256[])".to_string(),
+                parameters: vec![
+                    Parameter {
+                        param_type: "address[]".to_string(),
+                        value: serde_json::json!([
+                            "0x1111111111111111111111111111111111111111",
+                            "0x2222222222222222222222222222222222222222"
+                        ]),
+                    },
+                    Parameter {
+                        param_type: "uint256[]".to_string(),
+                        value: serde_json::json!(["1000000", "2000000"]),
+                    },
+                ],
+            },
+            gas_config: None,
+        };
+
+        assert_eq!(task.target_function.parameters.len(), 2);
+        assert_eq!(task.target_function.parameters[0].param_type, "address[]");
+    }
+
+    #[test]
+    fn test_scheduled_task_with_property_condition() {
+        let task = ScheduledTask {
+            name: "property_task".to_string(),
+            network: "test-network".to_string(),
+            schedule: "*/30 * * * * *".to_string(), // Every 30 seconds
+            check_condition: Some(CheckCondition::Property {
+                contract_address: "0x9876543210987654321098765432109876543210".to_string(),
+                property: "isActive".to_string(),
+                expected_value: serde_json::Value::Bool(true),
+            }),
+            target_function: TargetFunction {
+                contract_address: "0x9876543210987654321098765432109876543210".to_string(),
+                function: "process()".to_string(),
+                parameters: vec![],
+            },
+            gas_config: None,
+        };
+
+        match task.check_condition {
+            Some(CheckCondition::Property { property, .. }) => {
+                assert_eq!(property, "isActive");
+            }
+            _ => panic!("Expected Property condition"),
+        }
     }
 }

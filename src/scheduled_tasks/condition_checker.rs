@@ -288,7 +288,14 @@ impl ConditionChecker {
 
             let return_type = if remaining.starts_with('(') && remaining.ends_with(')') {
                 // Extract return type from "(returnType)"
-                remaining[1..remaining.len() - 1].to_string()
+                let inner = &remaining[1..remaining.len() - 1];
+                if inner.trim().is_empty() {
+                    return Err(anyhow!(
+                        "Empty return type specification in function signature: {}",
+                        signature
+                    ));
+                }
+                inner.to_string()
             } else if remaining.is_empty() {
                 // No return type specified, assume bool
                 "bool".to_string()
@@ -316,6 +323,8 @@ impl ConditionChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy::primitives::U256;
+    use serde_json::json;
 
     #[test]
     fn test_parse_function_signature() {
@@ -343,5 +352,121 @@ mod tests {
     fn test_parse_function_signature_invalid() {
         assert!(ConditionChecker::parse_function_signature("isReady").is_err());
         assert!(ConditionChecker::parse_function_signature("isReady(uint256)").is_err());
+    }
+
+    #[test]
+    fn test_parse_function_signature_with_spaces() {
+        let (name, return_type) =
+            ConditionChecker::parse_function_signature("  hasPermission()  (bool)  ")
+                .expect("Should handle spaces");
+        assert_eq!(name, "hasPermission");
+        assert_eq!(return_type, "bool");
+    }
+
+    #[test]
+    fn test_check_condition_variants() {
+        // Test Property condition
+        let property_condition = CheckCondition::Property {
+            contract_address: "0x1234567890123456789012345678901234567890".to_string(),
+            property: "isPaused".to_string(),
+            expected_value: json!(false),
+        };
+
+        match property_condition {
+            CheckCondition::Property {
+                property,
+                expected_value,
+                ..
+            } => {
+                assert_eq!(property, "isPaused");
+                assert_eq!(expected_value, json!(false));
+            }
+            _ => panic!("Wrong condition type"),
+        }
+
+        // Test Function condition
+        let function_condition = CheckCondition::Function {
+            contract_address: "0xABCDEF1234567890123456789012345678901234".to_string(),
+            function: "getMinimumDelay() (uint256)".to_string(),
+            expected_value: json!("3600"), // 1 hour in seconds
+        };
+
+        match function_condition {
+            CheckCondition::Function {
+                function,
+                expected_value,
+                ..
+            } => {
+                assert_eq!(function, "getMinimumDelay() (uint256)");
+                assert_eq!(expected_value, json!("3600"));
+            }
+            _ => panic!("Wrong condition type"),
+        }
+    }
+
+    #[test]
+    fn test_address_parsing() {
+        let valid_address = "0x1234567890123456789012345678901234567890";
+        let parsed = valid_address.parse::<Address>();
+        assert!(parsed.is_ok());
+
+        let invalid_address = "0x123"; // Too short
+        let parsed = invalid_address.parse::<Address>();
+        assert!(parsed.is_err());
+
+        let invalid_hex = "0xGHIJKL"; // Invalid hex
+        let parsed = invalid_hex.parse::<Address>();
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn test_expected_value_types() {
+        // Bool values
+        let bool_true = json!(true);
+        let bool_false = json!(false);
+        assert_eq!(bool_true.as_bool(), Some(true));
+        assert_eq!(bool_false.as_bool(), Some(false));
+
+        // Uint256 as string
+        let uint_str =
+            json!("115792089237316195423570985008687907853269984665640564039457584007913129639935");
+        assert!(uint_str.as_str().is_some());
+        assert!(U256::from_str_radix(uint_str.as_str().unwrap(), 10).is_ok());
+
+        // Uint256 as number (for smaller values)
+        let uint_num = json!(1000000);
+        assert_eq!(uint_num.as_u64(), Some(1000000));
+    }
+
+    #[test]
+    fn test_function_signature_variations() {
+        let signatures = vec![
+            ("isPaused()", ("isPaused", "bool")),
+            ("getOwner() (address)", ("getOwner", "address")),
+            ("totalSupply() (uint256)", ("totalSupply", "uint256")),
+            ("decimals() (uint8)", ("decimals", "uint8")),
+        ];
+
+        for (sig, (expected_name, expected_type)) in signatures {
+            match ConditionChecker::parse_function_signature(sig) {
+                Ok((name, ret_type)) => {
+                    assert_eq!(name, expected_name);
+                    assert_eq!(ret_type, expected_type);
+                }
+                Err(e) => panic!("Failed to parse '{}': {}", sig, e),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_function_edge_cases() {
+        // Empty return type parentheses should error
+        assert!(ConditionChecker::parse_function_signature("test() ()").is_err());
+
+        // Multiple spaces
+        let (name, ret_type) = ConditionChecker::parse_function_signature("test()     (uint256)")
+            .expect("Should handle multiple spaces");
+        assert_eq!(name, "test");
+        assert_eq!(ret_type, "uint256");
     }
 }

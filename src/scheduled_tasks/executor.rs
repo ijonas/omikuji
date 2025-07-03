@@ -370,6 +370,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_parse_function_signature() {
@@ -423,5 +424,193 @@ mod tests {
             }
             _ => panic!("Expected Address"),
         }
+    }
+
+    #[test]
+    fn test_parse_function_signature_complex() {
+        type DummyExecutor = FunctionExecutor<
+            alloy::transports::http::Http<alloy::transports::http::Client>,
+            alloy::network::Ethereum,
+            alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::Client>,
+            >,
+        >;
+
+        // Test function with multiple parameters
+        let (name, params) =
+            DummyExecutor::parse_function_signature("updatePrices(address[],uint256[])").unwrap();
+        assert_eq!(name, "updatePrices");
+        assert_eq!(params, vec!["address[]", "uint256[]"]);
+
+        // Test function with spaces
+        let (name, params) =
+            DummyExecutor::parse_function_signature("approve(address spender, uint256 amount)")
+                .unwrap();
+        assert_eq!(name, "approve");
+        assert_eq!(params, vec!["address", "uint256"]);
+
+        // Test function with no spaces after comma
+        let (name, params) =
+            DummyExecutor::parse_function_signature("transferFrom(address,address,uint256)")
+                .unwrap();
+        assert_eq!(name, "transferFrom");
+        assert_eq!(params, vec!["address", "address", "uint256"]);
+    }
+
+    #[test]
+    fn test_encode_parameter_array_types() {
+        type DummyExecutor = FunctionExecutor<
+            alloy::transports::http::Http<alloy::transports::http::Client>,
+            alloy::network::Ethereum,
+            alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::Client>,
+            >,
+        >;
+
+        // Test address array from JSON array
+        let addresses = json!([
+            "0x1111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222"
+        ]);
+        let encoded = DummyExecutor::encode_single_parameter(&addresses, "address[]").unwrap();
+        match encoded {
+            DynSolValue::Array(arr) => {
+                assert_eq!(arr.len(), 2);
+                match &arr[0] {
+                    DynSolValue::Address(_) => {}
+                    _ => panic!("Expected Address in array"),
+                }
+            }
+            _ => panic!("Expected Array"),
+        }
+
+        // Test address array from JSON string
+        let addresses_str = json!("[\"0x3333333333333333333333333333333333333333\"]");
+        let encoded = DummyExecutor::encode_single_parameter(&addresses_str, "address[]").unwrap();
+        match encoded {
+            DynSolValue::Array(arr) => {
+                assert_eq!(arr.len(), 1);
+            }
+            _ => panic!("Expected Array"),
+        }
+    }
+
+    #[test]
+    fn test_encode_parameter_bool() {
+        type DummyExecutor = FunctionExecutor<
+            alloy::transports::http::Http<alloy::transports::http::Client>,
+            alloy::network::Ethereum,
+            alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::Client>,
+            >,
+        >;
+
+        let val_true = json!(true);
+        let encoded = DummyExecutor::encode_single_parameter(&val_true, "bool").unwrap();
+        match encoded {
+            DynSolValue::Bool(b) => assert!(b),
+            _ => panic!("Expected Bool"),
+        }
+
+        let val_false = json!(false);
+        let encoded = DummyExecutor::encode_single_parameter(&val_false, "bool").unwrap();
+        match encoded {
+            DynSolValue::Bool(b) => assert!(!b),
+            _ => panic!("Expected Bool"),
+        }
+    }
+
+    #[test]
+    fn test_encode_parameter_uint256_string() {
+        type DummyExecutor = FunctionExecutor<
+            alloy::transports::http::Http<alloy::transports::http::Client>,
+            alloy::network::Ethereum,
+            alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::Client>,
+            >,
+        >;
+
+        // Test large uint256 as string
+        let val = json!("1000000000000000000"); // 1e18
+        let encoded = DummyExecutor::encode_single_parameter(&val, "uint256").unwrap();
+        match encoded {
+            DynSolValue::Uint(v, 256) => {
+                assert_eq!(v, U256::from_str_radix("1000000000000000000", 10).unwrap());
+            }
+            _ => panic!("Expected Uint256"),
+        }
+    }
+
+    #[test]
+    fn test_encode_parameters_mismatch() {
+        type DummyExecutor = FunctionExecutor<
+            alloy::transports::http::Http<alloy::transports::http::Client>,
+            alloy::network::Ethereum,
+            alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::Client>,
+            >,
+        >;
+
+        let params = vec![Parameter {
+            param_type: "address".to_string(),
+            value: json!("0x1234567890123456789012345678901234567890"),
+        }];
+        let param_types = vec!["address".to_string(), "uint256".to_string()];
+
+        // Should fail due to parameter count mismatch
+        assert!(DummyExecutor::encode_parameters(&params, &param_types).is_err());
+    }
+
+    #[test]
+    fn test_encode_parameter_invalid_types() {
+        type DummyExecutor = FunctionExecutor<
+            alloy::transports::http::Http<alloy::transports::http::Client>,
+            alloy::network::Ethereum,
+            alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::Client>,
+            >,
+        >;
+
+        // Invalid address (not a string)
+        let val = json!(12345);
+        assert!(DummyExecutor::encode_single_parameter(&val, "address").is_err());
+
+        // Invalid bool (not a boolean)
+        let val = json!("true");
+        assert!(DummyExecutor::encode_single_parameter(&val, "bool").is_err());
+
+        // Invalid uint256 (not a number or numeric string)
+        let val = json!("not a number");
+        assert!(DummyExecutor::encode_single_parameter(&val, "uint256").is_err());
+
+        // Unsupported type
+        let val = json!("test");
+        assert!(DummyExecutor::encode_single_parameter(&val, "bytes32").is_err());
+    }
+
+    #[test]
+    fn test_create_param_definitions() {
+        type DummyExecutor = FunctionExecutor<
+            alloy::transports::http::Http<alloy::transports::http::Client>,
+            alloy::network::Ethereum,
+            alloy::providers::RootProvider<
+                alloy::transports::http::Http<alloy::transports::http::Client>,
+            >,
+        >;
+
+        let param_types = vec![
+            "address".to_string(),
+            "uint256".to_string(),
+            "bool".to_string(),
+        ];
+        let params = DummyExecutor::create_param_definitions(&param_types);
+
+        assert_eq!(params.len(), 3);
+        assert_eq!(params[0].ty, "address");
+        assert_eq!(params[0].name, "param0");
+        assert_eq!(params[1].ty, "uint256");
+        assert_eq!(params[1].name, "param1");
+        assert_eq!(params[2].ty, "bool");
+        assert_eq!(params[2].name, "param2");
     }
 }
