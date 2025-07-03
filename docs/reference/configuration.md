@@ -17,8 +17,9 @@ omikuji [OPTIONS]
 - `-c, --config <FILE>`: Path to configuration file
   - Default: `config.yaml` in current directory, then `~/.omikuji/config.yaml`
   
-- `-p, --private-key-env <ENV_VAR>`: Environment variable containing private key
+- `-p, --private-key-env <ENV_VAR>`: Environment variable containing private key (backward compatibility fallback)
   - Default: `OMIKUJI_PRIVATE_KEY`
+  - Note: This is only used when keyring storage fails. Use network-specific variables instead.
   
 - `-V, --version`: Display version information
 
@@ -198,9 +199,26 @@ See [Gas Configuration Guide](../guides/gas-configuration.md) for detailed expla
 
 ## Environment Variables
 
-### Required
+### Private Keys
 
-- `OMIKUJI_PRIVATE_KEY` (or custom via `-p`): Wallet private key
+**Required**: You must provide a private key for each network using one of these methods:
+
+1. **Network-specific environment variables (Recommended)**: `OMIKUJI_PRIVATE_KEY_<NETWORK>` 
+   - Example: `OMIKUJI_PRIVATE_KEY_ETHEREUM`, `OMIKUJI_PRIVATE_KEY_BASE`, `OMIKUJI_PRIVATE_KEY_ANVIL`
+   - Network name is uppercase with hyphens replaced by underscores
+   - This is the primary method for setting private keys
+
+2. **Generic environment variable**: `PRIVATE_KEY`
+   - Used as fallback for all networks if network-specific variable is not set
+   - Not recommended for multi-network deployments
+
+3. **OS Keyring (Recommended for production)**:
+   - Import: `omikuji key import --network <network-name>`
+   - More secure than environment variables
+
+4. **Legacy backward compatibility**: The `-p` flag with `OMIKUJI_PRIVATE_KEY`
+   - Only used as fallback when keyring storage fails
+   - Not recommended for new deployments
 
 ### Optional
 
