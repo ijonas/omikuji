@@ -351,6 +351,7 @@ where
         let network_config = NetworkConfig {
             name: network_name,
             rpc_url: String::new(), // Not needed for reads
+            ws_url: None,
             transaction_type: "eip1559".to_string(),
             gas_config: Default::default(),
             gas_token: "ethereum".to_string(),
