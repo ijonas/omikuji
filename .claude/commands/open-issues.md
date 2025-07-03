@@ -1,0 +1,1 @@
+What are my open linear issues, those with a status of "To Do" in the Omikuji project?
