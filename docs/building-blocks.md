@@ -258,6 +258,65 @@ This document outlines the core architectural patterns and building blocks used 
       .build()?;
   ```
 
+## 15. ABI Encoding/Decoding (`src/contracts/abi_utils.rs`)
+
+**Pattern:** Centralized ABI Utilities
+
+- **Description:** ABI encoding and decoding is repetitive and error-prone. The ABI utilities module provides type-safe abstractions for common operations.
+- **Usage:** Use the utility functions and builders instead of manual ABI encoding/decoding.
+- **Examples:**
+  ```rust
+  // Parse function signatures
+  let (name, params) = parse_function_signature("transfer(address,uint256)")?;
+  
+  // Encode parameters dynamically
+  let encoded = encode_parameters(&["0x123...", "1000"], &["address", "uint256"])?;
+  
+  // Build function calls fluently
+  let call_data = ContractCallBuilder::new("transfer(address,uint256)")
+      .with_param("0x123...")
+      .with_param("1000")
+      .build()?;
+  
+  // Use common call helpers
+  let data = common_calls::balance_of(address)?;
+  ```
+- **Best Practices:**
+  - Use `parse_function_signature()` for dynamic function parsing
+  - Use `ContractCallBuilder` for constructing calls with proper encoding
+  - Leverage `common_calls` module for standard ERC20/contract operations
+
+## 16. Metrics-Aware Contract Calls (`src/contracts/generic_caller.rs`)
+
+**Pattern:** Automatic Metrics and Error Context
+
+- **Description:** Every contract call should record metrics and provide error context. The `MetricsAwareContractCaller` handles this automatically.
+- **Usage:** Use the generic caller instead of direct provider calls for consistent metrics and error handling.
+- **Example:**
+  ```rust
+  // Create a metrics-aware caller
+  let caller = create_contract_reader(provider, contract_address, "mainnet")
+      .with_feed_name("eth_usd");
+  
+  // Make calls with automatic metrics
+  let result = caller.call(
+      call_data,
+      "latestAnswer",
+      |bytes| decode_int256(bytes)
+  ).await?;
+  
+  // Or use the builder pattern
+  let result = ContractCallBuilder::new(provider, address, network, "balanceOf")
+      .with_feed_name("eth_usd")
+      .with_data(encoded_call)
+      .execute(decode_fn)
+      .await?;
+  ```
+- **Benefits:**
+  - Automatic success/failure metrics recording
+  - Consistent error context and logging
+  - Reduced boilerplate in contract interaction code
+
 ## Best Practices Summary
 
 1. **DRY (Don't Repeat Yourself):** Extract common patterns into reusable utilities
