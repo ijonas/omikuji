@@ -8,11 +8,11 @@ scheduled_tasks:
     network: "anvil"
     schedule: "0 * * * * *"
     check_condition: 
-      contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      contract_address: "0x0165878A594ca255338adfa4d48449f69242Eb8F"
       function: "canDistributeRewards()" 
       expected_value: true
     target_function:
-      contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      contract_address: "0x0165878A594ca255338adfa4d48449f69242Eb8F"
       function: "distributeRewards(uint256 totalAmount, address[] _recipients)"
       parameters:
         - value: "1000000000000000000"
@@ -24,7 +24,7 @@ datafeeds:
   - name: eth_usd
     networks: anvil
     check_frequency: 60  # Check every minute
-    contract_address: 0x5c74c94173F05dA1720953407cbb920F3DF9f887
+    contract_address: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
     contract_type: fluxmon
     read_contract_config: true
     minimum_update_frequency: 3600  # Update at least hourly
@@ -37,7 +37,7 @@ datafeeds:
   - name: btc_usd
     networks: anvil
     check_frequency: 120  # Check every 2 minutes
-    contract_address: 0x720472c8ce72c2A2D711333e064ABD3E6BbEAdd3
+    contract_address: 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
     contract_type: fluxmon
     read_contract_config: true
     minimum_update_frequency: 3600  # Update at least every 2 hours
