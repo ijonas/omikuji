@@ -30,7 +30,10 @@ fn substitute_env_vars(input: &str) -> String {
 }
 
 /// Parse and validate event monitor configurations
-pub fn parse_event_monitors(monitors: Vec<EventMonitor>) -> Result<Vec<EventMonitor>, String> {
+pub fn parse_event_monitors(
+    monitors: Vec<EventMonitor>,
+) -> Result<Vec<EventMonitor>, crate::event_monitors::error::EventMonitorError> {
+    use crate::event_monitors::error::EventMonitorError;
     let mut parsed_monitors = Vec::new();
 
     for mut monitor in monitors {
@@ -43,7 +46,12 @@ pub fn parse_event_monitors(monitors: Vec<EventMonitor>) -> Result<Vec<EventMoni
         monitor.webhook.url = substitute_env_vars(&monitor.webhook.url);
 
         // Validate the monitor configuration
-        monitor.validate()?;
+        monitor
+            .validate()
+            .map_err(|reason| EventMonitorError::ConfigError {
+                monitor: monitor.name.clone(),
+                reason,
+            })?;
 
         debug!(
             "Parsed event monitor '{}' for network '{}' monitoring contract {}",
@@ -57,7 +65,10 @@ pub fn parse_event_monitors(monitors: Vec<EventMonitor>) -> Result<Vec<EventMoni
     let mut seen_names = std::collections::HashSet::new();
     for monitor in &parsed_monitors {
         if !seen_names.insert(&monitor.name) {
-            return Err(format!("Duplicate event monitor name: {}", monitor.name));
+            return Err(EventMonitorError::ConfigError {
+                monitor: monitor.name.clone(),
+                reason: "Duplicate monitor name".to_string(),
+            });
         }
     }
 

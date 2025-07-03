@@ -1,11 +1,12 @@
 //! HTTP webhook client with retry logic
 
+use super::error::{EventMonitorError, Result};
 use super::listener::{EventContext, ProcessedEvent};
+use super::metrics::{EventMonitorMetricsContext, WebhookRetryMetricsRecorder};
 use super::models::{HttpMethod, WebhookConfig};
-use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
 /// HTTP client for calling webhooks
@@ -71,6 +72,9 @@ impl WebhookCaller {
         event: &ProcessedEvent,
         context: &EventContext,
     ) -> Result<WebhookResponse> {
+        let metrics_ctx =
+            EventMonitorMetricsContext::new(event.monitor_name.clone(), context.network.clone());
+        let retry_recorder = WebhookRetryMetricsRecorder::new(event.monitor_name.clone());
         let payload = self.create_payload(event, context);
 
         debug!(
@@ -82,8 +86,17 @@ impl WebhookCaller {
         let mut attempt = 0;
 
         while attempt <= config.retry_attempts {
+            let start_time = Instant::now();
             match self.make_request(config, &payload).await {
                 Ok(response) => {
+                    let duration = start_time.elapsed().as_secs_f64();
+                    metrics_ctx.webhook_response_time(duration);
+                    metrics_ctx.webhook_call(true);
+
+                    if attempt > 0 {
+                        retry_recorder.record_result(true, (attempt + 1) as u32);
+                    }
+
                     info!(
                         "Webhook call successful for monitor '{}' (attempt {}/{})",
                         event.monitor_name,
@@ -95,6 +108,10 @@ impl WebhookCaller {
                 Err(e) => {
                     attempt += 1;
                     last_error = Some(e);
+
+                    if attempt > 1 {
+                        retry_recorder.record_attempt(attempt as u32, "http_error");
+                    }
 
                     if attempt <= config.retry_attempts {
                         warn!(
@@ -116,13 +133,20 @@ impl WebhookCaller {
             }
         }
 
+        metrics_ctx.webhook_call(false);
+        retry_recorder.record_result(false, (config.retry_attempts + 1) as u32);
+
         error!(
             "Webhook call failed for monitor '{}' after {} attempts",
             event.monitor_name,
             config.retry_attempts + 1
         );
 
-        Err(last_error.unwrap())
+        Err(EventMonitorError::WebhookError {
+            monitor: event.monitor_name.clone(),
+            attempts: config.retry_attempts + 1,
+            reason: last_error.unwrap().to_string(),
+        })
     }
 
     /// Create webhook payload from event data
@@ -179,10 +203,7 @@ impl WebhookCaller {
         }
 
         // Send request
-        let response = request
-            .send()
-            .await
-            .context("Failed to send webhook request")?;
+        let response = request.send().await.map_err(EventMonitorError::HttpError)?;
 
         // Check status
         let status = response.status();
@@ -192,21 +213,18 @@ impl WebhookCaller {
                 .await
                 .unwrap_or_else(|_| "Failed to read error body".to_string());
 
-            return Err(anyhow::anyhow!(
-                "Webhook returned error status {}: {}",
-                status,
-                error_body
-            ));
+            return Err(EventMonitorError::Other(format!(
+                "Webhook returned error status {status}: {error_body}"
+            )));
         }
 
         // Parse response
         let response_text = response
             .text()
             .await
-            .context("Failed to read response body")?;
+            .map_err(EventMonitorError::HttpError)?;
 
-        serde_json::from_str(&response_text)
-            .context(format!("Failed to parse webhook response: {response_text}"))
+        serde_json::from_str(&response_text).map_err(EventMonitorError::JsonError)
     }
 }
 

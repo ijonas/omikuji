@@ -1,9 +1,10 @@
 //! Response handling framework for webhook responses
 
+use super::error::{EventMonitorError, Result};
 use super::listener::{EventContext, ProcessedEvent};
+use super::metrics::EventMonitorMetricsContext;
 use super::models::{EventMonitor, ResponseType};
 use super::webhook_caller::WebhookResponse;
-use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -68,6 +69,8 @@ impl ResponseHandler {
         context: &EventContext,
     ) -> Result<()> {
         let response_type = &monitor.response.response_type;
+        let metrics_ctx =
+            EventMonitorMetricsContext::new(monitor.name.clone(), context.network.clone());
 
         debug!(
             "Handling {} response for monitor '{}'",
@@ -80,11 +83,29 @@ impl ResponseHandler {
             monitor.name
         );
 
-        let handler = self.handlers.get(response_type).context(format!(
-            "No handler found for response type {response_type:?}"
-        ))?;
+        let response_type_str = match response_type {
+            ResponseType::LogOnly => "log_only",
+            ResponseType::ContractCall => "contract_call",
+            ResponseType::StoreDb => "store_db",
+            ResponseType::MultiAction => "multi_action",
+        };
 
-        handler.handle(monitor, response, event, context).await
+        let handler =
+            self.handlers
+                .get(response_type)
+                .ok_or_else(|| EventMonitorError::HandlerError {
+                    monitor: monitor.name.clone(),
+                    reason: format!("No handler found for response type {response_type:?}"),
+                })?;
+
+        let result = handler.handle(monitor, response, event, context).await;
+
+        match &result {
+            Ok(_) => metrics_ctx.response_handler_execution(response_type_str, true),
+            Err(_) => metrics_ctx.response_handler_execution(response_type_str, false),
+        }
+
+        result
     }
 
     /// Register a custom handler for a response type

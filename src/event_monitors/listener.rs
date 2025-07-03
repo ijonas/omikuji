@@ -1,5 +1,7 @@
 //! Event listening and subscription logic
 
+use super::error::{EventMonitorError, Result};
+use super::metrics::{EventMonitorMetrics, EventMonitorMetricsContext};
 use super::models::EventMonitor;
 use super::response_handler::ResponseHandler;
 use super::webhook_caller::WebhookCaller;
@@ -7,7 +9,6 @@ use crate::network::NetworkManager;
 use alloy::primitives::Address;
 use alloy::providers::Provider;
 use alloy::rpc::types::Log;
-use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -64,11 +65,15 @@ impl EventListener {
     /// Start monitoring events for all configured monitors
     pub async fn start_monitoring(&self) -> Result<Vec<JoinHandle<()>>> {
         let mut handles = Vec::new();
+        let metrics = EventMonitorMetrics::global();
 
         // Group monitors by network for efficiency
         let monitors_by_network = self.group_monitors_by_network();
 
         for (network_name, network_monitors) in monitors_by_network {
+            let monitor_count = network_monitors.len() as i64;
+            metrics.update_active_subscriptions(&network_name, monitor_count);
+
             let handle = self
                 .start_network_monitoring(network_name, network_monitors)
                 .await?;
@@ -104,11 +109,17 @@ impl EventListener {
             .network_manager
             .get_network(&network_name)
             .await
-            .context(format!("Failed to get network '{network_name}'"))?;
+            .map_err(|_| EventMonitorError::NetworkNotFound(network_name.clone()))?;
 
         // For now, use HTTP provider with polling
         // TODO: In production, use WebSocket for better performance
-        let provider = self.network_manager.get_provider(&network_name)?;
+        let provider = self
+            .network_manager
+            .get_provider(&network_name)
+            .map_err(|e| EventMonitorError::ProviderError {
+                network: network_name.clone(),
+                reason: e.to_string(),
+            })?;
 
         let webhook_caller = self.webhook_caller.clone();
         let response_handler = self.response_handler.clone();
@@ -116,14 +127,18 @@ impl EventListener {
         let handle = tokio::spawn(async move {
             if let Err(e) = Self::monitor_network_events(
                 provider,
-                network_name,
+                network_name.clone(),
                 monitors,
                 webhook_caller,
                 response_handler,
             )
             .await
             {
-                error!("Event monitoring error: {}", e);
+                error!(
+                    "Event monitoring error for network '{}': {}",
+                    network_name, e
+                );
+                EventMonitorMetrics::global().update_active_subscriptions(&network_name, 0);
             }
         });
 
@@ -177,7 +192,13 @@ impl EventListener {
         _tx: mpsc::Sender<(EventMonitor, Log)>,
     ) -> Result<JoinHandle<()>> {
         // Parse event signature to get event selector
-        let _event_selector = Self::parse_event_selector(&monitor.event_signature)?;
+        let _event_selector =
+            Self::parse_event_selector(&monitor.event_signature).map_err(|e| {
+                EventMonitorError::ConfigError {
+                    monitor: monitor.name.clone(),
+                    reason: format!("Invalid event signature: {e}"),
+                }
+            })?;
 
         // For Phase 1, we'll use polling instead of subscriptions
         // TODO: Implement proper WebSocket subscriptions in production
@@ -211,6 +232,8 @@ impl EventListener {
                     }
                     Err(e) => {
                         error!("Failed to get block number: {}", e);
+                        EventMonitorMetrics::global()
+                            .record_processing_error(&monitor.name, "block_number_fetch");
                     }
                 }
             }
@@ -220,7 +243,9 @@ impl EventListener {
     }
 
     /// Parse event signature to get the event selector
-    fn parse_event_selector(signature: &str) -> Result<alloy::primitives::B256> {
+    fn parse_event_selector(
+        signature: &str,
+    ) -> std::result::Result<alloy::primitives::B256, String> {
         // For now, we'll use a simple keccak hash of the signature
         // In a real implementation, we'd parse the signature more carefully
         use alloy::primitives::keccak256;
@@ -235,6 +260,8 @@ impl EventListener {
         webhook_caller: &Arc<WebhookCaller>,
         response_handler: &Arc<ResponseHandler>,
     ) -> Result<()> {
+        let metrics_ctx =
+            EventMonitorMetricsContext::new(monitor.name.clone(), network_name.to_string());
         debug!(
             "Processing event for monitor '{}' at block {} (tx: {})",
             monitor.name,
@@ -244,6 +271,9 @@ impl EventListener {
 
         // Decode event data
         let processed_event = Self::decode_event_data(&log, monitor)?;
+
+        // Record event received
+        metrics_ctx.event_received(&processed_event.event_name);
 
         // Create event context
         let context = EventContext {
@@ -261,6 +291,9 @@ impl EventListener {
         response_handler
             .handle_response(monitor, response, &processed_event, &context)
             .await?;
+
+        // Record successful processing
+        metrics_ctx.event_processed(&processed_event.event_name);
 
         Ok(())
     }
