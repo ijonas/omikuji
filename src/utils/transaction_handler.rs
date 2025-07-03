@@ -9,7 +9,6 @@ use tracing::info;
 
 /// Context for the transaction (e.g., "datafeed" or "scheduled_task")
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum TransactionContext {
     Datafeed { feed_name: String },
     ScheduledTask { task_name: String },

@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::*;
-    use anyhow::Result;
+
     use serde_json::json;
     use std::sync::Arc;
 
@@ -380,7 +379,7 @@ mod tests {
 
         #[test]
         fn test_time_threshold_calculation() {
-            use chrono::{DateTime, Duration, Utc};
+            use chrono::{Duration, Utc};
 
             let last_update = Utc::now() - Duration::hours(2);
             let minimum_update_frequency = 3600; // 1 hour in seconds
@@ -395,7 +394,7 @@ mod tests {
         fn test_value_scaling_with_bounds() {
             let value = 1234.56;
             let decimals = 8;
-            let scaled = (value * 10f64.powi(decimals as i32)).round() as i128;
+            let scaled = (value * 10f64.powi(decimals)).round() as i128;
 
             assert_eq!(scaled, 123456000000);
 
@@ -410,7 +409,7 @@ mod tests {
     }
 
     mod contract_utils_additional_tests {
-        use super::*;
+
         use crate::config::models::Datafeed;
         use crate::datafeed::contract_utils::*;
         use alloy::primitives::I256;
@@ -425,7 +424,7 @@ mod tests {
 
             for addr in valid_addresses {
                 let result = parse_address(addr);
-                assert!(result.is_ok(), "Failed to parse address: {}", addr);
+                assert!(result.is_ok(), "Failed to parse address: {addr}");
             }
         }
 
@@ -441,7 +440,7 @@ mod tests {
 
             for addr in invalid_addresses {
                 let result = parse_address(addr);
-                assert!(result.is_err(), "Should fail to parse address: {}", addr);
+                assert!(result.is_err(), "Should fail to parse address: {addr}");
             }
         }
 
@@ -507,9 +506,8 @@ mod tests {
     }
 
     mod manager_tests {
-        use super::*;
+
         use crate::config::models::OmikujiConfig;
-        use crate::network::NetworkManager;
 
         #[test]
         fn test_manager_creation() {

@@ -10,27 +10,27 @@ use std::fmt::Display;
 pub mod messages {
     /// Create a "Failed to {action} {object}" message
     pub fn failed_to(action: &str, object: &str) -> String {
-        format!("Failed to {} {}", action, object)
+        format!("Failed to {action} {object}")
     }
 
     /// Create a "Failed to parse {type}: {value}" message
     pub fn failed_to_parse(type_name: &str, value: impl std::fmt::Display) -> String {
-        format!("Failed to parse {}: {}", type_name, value)
+        format!("Failed to parse {type_name}: {value}")
     }
 
     /// Create a "Failed to get {property} from {source}" message
     pub fn failed_to_get(property: &str, source: &str) -> String {
-        format!("Failed to get {} from {}", property, source)
+        format!("Failed to get {property} from {source}")
     }
 
     /// Create a "Failed to create {component}" message
     pub fn failed_to_create(component: &str) -> String {
-        format!("Failed to create {}", component)
+        format!("Failed to create {component}")
     }
 
     /// Create a "{operation} failed for {target}" message
     pub fn operation_failed(operation: &str, target: &str) -> String {
-        format!("{} failed for {}", operation, target)
+        format!("{operation} failed for {target}")
     }
 }
 
@@ -55,7 +55,7 @@ pub mod database {
     }
 
     pub fn query(operation: &str) -> String {
-        format!("Database query failed: {}", operation)
+        format!("Database query failed: {operation}")
     }
 
     pub fn connection() -> &'static str {
@@ -72,7 +72,7 @@ pub mod network {
     use super::messages;
 
     pub fn provider_creation(network_name: &str) -> String {
-        format!("Failed to create provider for network '{}'", network_name)
+        format!("Failed to create provider for network '{network_name}'")
     }
 
     pub fn rpc_url_parse(url: &str) -> String {
@@ -80,19 +80,19 @@ pub mod network {
     }
 
     pub fn key_retrieval(network_name: &str) -> String {
-        format!("Failed to retrieve key for network '{}'", network_name)
+        format!("Failed to retrieve key for network '{network_name}'")
     }
 
     pub fn block_number(network_name: &str) -> String {
-        format!("Failed to get block number for network '{}'", network_name)
+        format!("Failed to get block number for network '{network_name}'")
     }
 
     pub fn chain_id(network_name: &str) -> String {
-        format!("Failed to get chain ID for network '{}'", network_name)
+        format!("Failed to get chain ID for network '{network_name}'")
     }
 
     pub fn connection(network_name: &str) -> String {
-        format!("Failed to connect to network '{}'", network_name)
+        format!("Failed to connect to network '{network_name}'")
     }
 }
 
@@ -101,11 +101,11 @@ pub mod contract {
     use super::messages;
 
     pub fn decode(method_name: &str) -> String {
-        format!("Failed to decode {} response", method_name)
+        format!("Failed to decode {method_name} response")
     }
 
     pub fn call(method_name: &str) -> String {
-        format!("Contract call {} failed", method_name)
+        format!("Contract call {method_name} failed")
     }
 
     pub fn transaction_send() -> &'static str {
@@ -121,11 +121,11 @@ pub mod contract {
     }
 
     pub fn abi_encode(function: &str) -> String {
-        format!("Failed to encode ABI for function '{}'", function)
+        format!("Failed to encode ABI for function '{function}'")
     }
 
     pub fn abi_decode(function: &str) -> String {
-        format!("Failed to decode ABI for function '{}'", function)
+        format!("Failed to decode ABI for function '{function}'")
     }
 }
 
@@ -133,19 +133,19 @@ pub mod contract {
 pub mod config {
 
     pub fn load(path: &str) -> String {
-        format!("Failed to load configuration from '{}'", path)
+        format!("Failed to load configuration from '{path}'")
     }
 
     pub fn parse(field: &str) -> String {
-        format!("Failed to parse configuration field '{}'", field)
+        format!("Failed to parse configuration field '{field}'")
     }
 
     pub fn validate(reason: &str) -> String {
-        format!("Configuration validation failed: {}", reason)
+        format!("Configuration validation failed: {reason}")
     }
 
     pub fn missing_field(field: &str) -> String {
-        format!("Missing required configuration field '{}'", field)
+        format!("Missing required configuration field '{field}'")
     }
 }
 
@@ -153,15 +153,15 @@ pub mod config {
 pub mod key_storage {
 
     pub fn store(network: &str) -> String {
-        format!("Failed to store key for network '{}'", network)
+        format!("Failed to store key for network '{network}'")
     }
 
     pub fn retrieve(network: &str) -> String {
-        format!("Failed to retrieve key for network '{}'", network)
+        format!("Failed to retrieve key for network '{network}'")
     }
 
     pub fn remove(network: &str) -> String {
-        format!("Failed to remove key for network '{}'", network)
+        format!("Failed to remove key for network '{network}'")
     }
 
     pub fn parse() -> &'static str {
@@ -195,15 +195,15 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     fn context_db(self, operation: &str, table: &str) -> Result<T> {
-        self.with_context(|| format!("Database {} operation failed for {}", operation, table))
+        self.with_context(|| format!("Database {operation} operation failed for {table}"))
     }
 
     fn context_network(self, operation: &str, network: &str) -> Result<T> {
-        self.with_context(|| format!("Network {} operation failed for '{}'", operation, network))
+        self.with_context(|| format!("Network {operation} operation failed for '{network}'"))
     }
 
     fn context_contract(self, operation: &str, contract: &str) -> Result<T> {
-        self.with_context(|| format!("Contract {} operation failed for '{}'", operation, contract))
+        self.with_context(|| format!("Contract {operation} operation failed for '{contract}'"))
     }
 
     fn context_fmt<F>(self, f: F) -> Result<T>
@@ -216,22 +216,22 @@ where
 
 /// Helper for creating validation error contexts
 pub fn validation_error(field: &str, value: impl Display, reason: &str) -> String {
-    format!("Invalid {} '{}': {}", field, value, reason)
+    format!("Invalid {field} '{value}': {reason}")
 }
 
 /// Helper for creating not found error contexts
 pub fn not_found(resource: &str, identifier: impl Display) -> String {
-    format!("{} '{}' not found", resource, identifier)
+    format!("{resource} '{identifier}' not found")
 }
 
 /// Helper for creating permission error contexts
 pub fn permission_denied(action: &str, resource: &str) -> String {
-    format!("Permission denied to {} {}", action, resource)
+    format!("Permission denied to {action} {resource}")
 }
 
 /// Helper for creating timeout error contexts
 pub fn timeout(operation: &str, duration: impl Display) -> String {
-    format!("{} timed out after {}", operation, duration)
+    format!("{operation} timed out after {duration}")
 }
 
 #[cfg(test)]

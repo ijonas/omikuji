@@ -181,7 +181,7 @@ where
 {
     fn wrap_network_error(self, network: &str, operation: &str) -> Result<T> {
         self.with_context(|| error_context::network::connection(network))
-            .with_context(|| format!("During {} operation", operation))
+            .with_context(|| format!("During {operation} operation"))
     }
 
     fn wrap_db_error(self, entity: &str, operation: &str) -> Result<T> {
@@ -230,7 +230,7 @@ pub mod validation {
             anyhow::bail!(error_context::validation_error(
                 field_name,
                 &value,
-                &format!("must be between {} and {}", min, max)
+                &format!("must be between {min} and {max}")
             ));
         }
         Ok(())
@@ -281,7 +281,7 @@ where
                     tokio::time::sleep(std::time::Duration::from_secs(attempt as u64)).await;
                 } else {
                     return Err(e).with_context(|| {
-                        format!("{} failed after {} attempts", operation_name, max_attempts)
+                        format!("{operation_name} failed after {max_attempts} attempts")
                     });
                 }
             }

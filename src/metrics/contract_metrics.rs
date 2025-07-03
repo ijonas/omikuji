@@ -391,7 +391,7 @@ mod tests {
 
         for (i, latency) in latencies.iter().enumerate() {
             ContractMetrics::record_contract_read(
-                &format!("test_feed_{}", i),
+                &format!("test_feed_{i}"),
                 "testnet",
                 "testMethod",
                 true,
@@ -445,13 +445,13 @@ mod tests {
     #[test]
     fn test_confirmation_time_buckets() {
         // Test various confirmation times
-        let times = vec![0.5, 3.0, 15.0, 45.0, 90.0, 240.0, 450.0];
+        let times = [0.5, 3.0, 15.0, 45.0, 90.0, 240.0, 450.0];
 
         for (i, &time) in times.iter().enumerate() {
             let submission_time = 1700000000u64;
             let confirmation_time = submission_time + (time as u64);
             ContractMetrics::record_confirmation_time(
-                &format!("feed_{}", i),
+                &format!("feed_{i}"),
                 "testnet",
                 submission_time,
                 confirmation_time,
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn test_transaction_retry_reasons() {
-        let retry_reasons = vec![
+        let retry_reasons = [
             "insufficient_gas",
             "nonce_conflict",
             "network_congestion",
@@ -515,17 +515,17 @@ mod tests {
     #[test]
     fn test_mempool_time_recording() {
         // Test various mempool times
-        let times = vec![2.0, 8.0, 25.0, 75.0, 180.0, 420.0];
+        let times = [2.0, 8.0, 25.0, 75.0, 180.0, 420.0];
 
         for (i, &time) in times.iter().enumerate() {
-            ContractMetrics::record_mempool_time(&format!("feed_{}", i), "testnet", time);
+            ContractMetrics::record_mempool_time(&format!("feed_{i}"), "testnet", time);
         }
     }
 
     #[test]
     fn test_error_message_handling() {
         // Test various error messages
-        let errors = vec![
+        let errors = [
             Some("connection refused"),
             Some("timeout after 30s"),
             Some("invalid response format"),
@@ -535,7 +535,7 @@ mod tests {
 
         for (i, error) in errors.iter().enumerate() {
             ContractMetrics::record_contract_read(
-                &format!("error_feed_{}", i),
+                &format!("error_feed_{i}"),
                 "testnet",
                 "testMethod",
                 false,

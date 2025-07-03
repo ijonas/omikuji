@@ -158,7 +158,7 @@ mod tests {
 
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
-            format!("postgres://***@{}", host_and_db)
+            format!("postgres://***@{host_and_db}")
         } else {
             "postgres://***".to_string()
         };
@@ -171,7 +171,7 @@ mod tests {
 
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
-            format!("postgres://***@{}", host_and_db)
+            format!("postgres://***@{host_and_db}")
         } else {
             "postgres://***".to_string()
         };
@@ -225,8 +225,7 @@ mod tests {
 
         assert!(
             contains_expected_error,
-            "Expected error about DATABASE_URL or connection failure in error chain: {:?}",
-            error_chain
+            "Expected error about DATABASE_URL or connection failure in error chain: {error_chain:?}"
         );
 
         // Restore DATABASE_URL if it was set

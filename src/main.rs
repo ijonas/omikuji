@@ -526,24 +526,24 @@ mod tests {
     #[test]
     fn test_cli_parsing() {
         // Test default CLI args
-        let cli = Cli::parse_from(&["omikuji"]);
+        let cli = Cli::parse_from(["omikuji"]);
         assert!(cli.command.is_none());
         assert!(cli.config.is_none());
         assert_eq!(cli.private_key_env, "OMIKUJI_PRIVATE_KEY");
 
         // Test with config path
-        let cli = Cli::parse_from(&["omikuji", "-c", "config.yaml"]);
+        let cli = Cli::parse_from(["omikuji", "-c", "config.yaml"]);
         assert_eq!(cli.config.unwrap().to_str().unwrap(), "config.yaml");
 
         // Test with custom private key env
-        let cli = Cli::parse_from(&["omikuji", "-p", "MY_KEY"]);
+        let cli = Cli::parse_from(["omikuji", "-p", "MY_KEY"]);
         assert_eq!(cli.private_key_env, "MY_KEY");
     }
 
     #[test]
     fn test_cli_key_commands() {
         // Test key import command
-        let cli = Cli::parse_from(&["omikuji", "key", "import", "-n", "mainnet"]);
+        let cli = Cli::parse_from(["omikuji", "key", "import", "-n", "mainnet"]);
         match cli.command {
             Some(Commands::Key { command }) => match command {
                 KeyCommands::Import { network, .. } => {
@@ -555,7 +555,7 @@ mod tests {
         }
 
         // Test key list command
-        let cli = Cli::parse_from(&["omikuji", "key", "list"]);
+        let cli = Cli::parse_from(["omikuji", "key", "list"]);
         match cli.command {
             Some(Commands::Key { command }) => match command {
                 KeyCommands::List { .. } => {}
@@ -565,7 +565,7 @@ mod tests {
         }
 
         // Test key remove command
-        let cli = Cli::parse_from(&["omikuji", "key", "remove", "-n", "testnet"]);
+        let cli = Cli::parse_from(["omikuji", "key", "remove", "-n", "testnet"]);
         match cli.command {
             Some(Commands::Key { command }) => match command {
                 KeyCommands::Remove { network, .. } => {
@@ -597,12 +597,12 @@ mod tests {
     #[test]
     fn test_config_path_resolution() {
         // Test default config path
-        let cli = Cli::parse_from(&["omikuji"]);
+        let cli = Cli::parse_from(["omikuji"]);
         let config_path = cli.config.unwrap_or_else(config::default_config_path);
         assert!(config_path.to_str().unwrap().ends_with("config.yaml"));
 
         // Test custom config path
-        let cli = Cli::parse_from(&["omikuji", "-c", "/custom/path.yaml"]);
+        let cli = Cli::parse_from(["omikuji", "-c", "/custom/path.yaml"]);
         let config_path = cli.config.unwrap_or_else(config::default_config_path);
         assert_eq!(config_path.to_str().unwrap(), "/custom/path.yaml");
     }
