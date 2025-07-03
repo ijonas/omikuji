@@ -128,7 +128,7 @@ mod tests {
 
         let encoded = call.abi_encode();
         assert!(!encoded.is_empty());
-        assert!(encoded.len() > 0);
+        assert!(!encoded.is_empty());
     }
 
     #[test]
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn test_scaling_precision() {
         // Test that scaling maintains precision within reasonable bounds
-        let value = 123.456789123456789;
+        let value = 123.456_789_123_456_79;
 
         // With 18 decimals (max ETH precision)
         let scaled_18 = scale_value_for_contract(value, 18);

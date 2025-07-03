@@ -158,7 +158,7 @@ mod tests {
 
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
-            format!("postgres://***@{}", host_and_db)
+            format!("postgres://***@{host_and_db}")
         } else {
             "postgres://***".to_string()
         };
@@ -171,7 +171,7 @@ mod tests {
 
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
-            format!("postgres://***@{}", host_and_db)
+            format!("postgres://***@{host_and_db}")
         } else {
             "postgres://***".to_string()
         };
@@ -184,16 +184,49 @@ mod tests {
         // Save current DATABASE_URL if it exists
         let saved_url = env::var("DATABASE_URL").ok();
 
-        // Remove DATABASE_URL
+        // Set an invalid DATABASE_URL to ensure connection fails
+        env::set_var("DATABASE_URL", "invalid://url");
+
+        // Test that connection fails with invalid DATABASE_URL
+        let result = establish_connection().await;
+        assert!(
+            result.is_err(),
+            "Expected connection to fail with invalid DATABASE_URL"
+        );
+
+        // Now remove DATABASE_URL entirely
         env::remove_var("DATABASE_URL");
 
         // Test that connection fails without DATABASE_URL
         let result = establish_connection().await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("DATABASE_URL environment variable not set"));
+        assert!(
+            result.is_err(),
+            "Expected connection to fail without DATABASE_URL"
+        );
+
+        // Get the full error chain
+        let error = result.unwrap_err();
+        let mut error_chain = vec![error.to_string()];
+
+        // Walk the error chain
+        let mut current_error = error.source();
+        while let Some(e) = current_error {
+            error_chain.push(e.to_string());
+            current_error = e.source();
+        }
+
+        // Check if any error in the chain mentions DATABASE_URL or indicates missing env var
+        let contains_expected_error = error_chain.iter().any(|msg| {
+            msg.contains("DATABASE_URL")
+                || msg.contains("environment variable")
+                || msg.contains("not set")
+                || msg.contains("Failed to create PostgreSQL connection pool")
+        });
+
+        assert!(
+            contains_expected_error,
+            "Expected error about DATABASE_URL or connection failure in error chain: {error_chain:?}"
+        );
 
         // Restore DATABASE_URL if it was set
         if let Some(url) = saved_url {

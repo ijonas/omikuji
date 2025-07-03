@@ -2,7 +2,6 @@
 mod tests {
     use crate::database::establish_connection;
     use crate::database::models::{FeedLog, NewFeedLog};
-    use crate::database::repository::FeedSummary;
     use chrono::{Duration, Utc};
 
     #[test]
@@ -75,24 +74,6 @@ mod tests {
         assert!(!log.network_error);
     }
 
-    #[test]
-    fn test_feed_summary_struct() {
-        let now = Utc::now();
-        let summary = FeedSummary {
-            feed_name: "eth_usd".to_string(),
-            network_name: "ethereum".to_string(),
-            log_count: 1000,
-            oldest_log: now - Duration::days(30),
-            newest_log: now,
-            error_count: 5,
-        };
-
-        assert_eq!(summary.feed_name, "eth_usd");
-        assert_eq!(summary.network_name, "ethereum");
-        assert_eq!(summary.log_count, 1000);
-        assert_eq!(summary.error_count, 5);
-    }
-
     // Mock database connection for testing
     #[cfg(test)]
     mod mock_db {
@@ -148,7 +129,7 @@ mod tests {
 
         let masked = if url_parts.len() > 1 {
             let host_and_db = url_parts[1];
-            format!("postgres://***@{}", host_and_db)
+            format!("postgres://***@{host_and_db}")
         } else {
             "postgres://***".to_string()
         };
@@ -312,7 +293,7 @@ mod tests {
             };
 
             // Verify we can handle these edge cases
-            assert_eq!(log.feed_timestamp, timestamp, "Failed for: {}", description);
+            assert_eq!(log.feed_timestamp, timestamp, "Failed for: {description}");
         }
     }
 
@@ -339,7 +320,7 @@ mod tests {
                 network_error: false,
             };
 
-            assert_eq!(log.feed_value, value, "Failed for: {}", description);
+            assert_eq!(log.feed_value, value, "Failed for: {description}");
         }
     }
 
@@ -426,7 +407,7 @@ mod tests {
 
         let large_batch: Vec<NewFeedLog> = (0..MAX_BATCH_SIZE + 100)
             .map(|i| NewFeedLog {
-                feed_name: format!("feed_{}", i),
+                feed_name: format!("feed_{i}"),
                 network_name: "test".to_string(),
                 feed_value: i as f64,
                 feed_timestamp: Utc::now().timestamp(),
@@ -464,7 +445,7 @@ mod tests {
         // Test database reconnection after network partition
         use std::time::Duration as StdDuration;
 
-        let reconnect_intervals = vec![
+        let reconnect_intervals = [
             StdDuration::from_millis(100),
             StdDuration::from_millis(500),
             StdDuration::from_secs(1),

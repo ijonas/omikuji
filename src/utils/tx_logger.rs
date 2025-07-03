@@ -4,7 +4,6 @@ use tracing::{debug, error, info, warn};
 /// Standard transaction logging utilities
 pub struct TransactionLogger;
 
-#[allow(dead_code)]
 impl TransactionLogger {
     /// Log transaction submission
     pub fn log_submission(
@@ -34,32 +33,11 @@ impl TransactionLogger {
         );
     }
 
-    /// Log transaction cost in USD
-    pub fn log_usd_cost(
-        total_cost_usd: f64,
-        gas_used: u128,
-        gas_price_wei: u128,
-        token_price_usd: f64,
-    ) {
-        info!(
-            "Transaction cost: ${:.6} USD (gas: {}, price: {} wei, token: ${:.2})",
-            total_cost_usd, gas_used, gas_price_wei, token_price_usd
-        );
-    }
-
     /// Log transaction failure
     pub fn log_failure(context_type: &str, context_name: &str, error: &str) {
         error!(
             "Failed to submit {} for '{}': {}",
             context_type, context_name, error
-        );
-    }
-
-    /// Log gas estimation details
-    pub fn log_gas_estimation(estimated_gas: u64, gas_limit: u64, multiplier: f64) {
-        info!(
-            "Gas estimation: {} units (limit: {}, multiplier: {:.2}x)",
-            estimated_gas, gas_limit, multiplier
         );
     }
 
@@ -69,41 +47,6 @@ impl TransactionLogger {
             "Attempting fee bump #{}: {} -> {} wei",
             attempt, old_price, new_price
         );
-    }
-
-    /// Log transaction details for debugging
-    pub fn log_transaction_details(
-        to_address: &str,
-        function_name: Option<&str>,
-        gas_limit: Option<u64>,
-        max_fee_per_gas: Option<U256>,
-        max_priority_fee: Option<U256>,
-    ) {
-        let mut details = format!("Transaction details - To: {to_address}");
-
-        if let Some(func) = function_name {
-            details.push_str(&format!(", Function: {func}"));
-        }
-
-        if let Some(limit) = gas_limit {
-            details.push_str(&format!(", Gas limit: {limit}"));
-        }
-
-        if let Some(max_fee) = max_fee_per_gas {
-            details.push_str(&format!(
-                ", Max fee: {} gwei",
-                max_fee.to::<u128>() as f64 / 1e9
-            ));
-        }
-
-        if let Some(priority) = max_priority_fee {
-            details.push_str(&format!(
-                ", Priority fee: {} gwei",
-                priority.to::<u128>() as f64 / 1e9
-            ));
-        }
-
-        info!("{}", details);
     }
 
     /// Log when conditions are met for execution

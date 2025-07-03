@@ -23,18 +23,8 @@ mod transaction_logger_tests {
     }
 
     #[test]
-    fn test_log_usd_cost() {
-        TransactionLogger::log_usd_cost(0.001234, 21000, 50_000_000_000, 2500.0);
-    }
-
-    #[test]
     fn test_log_failure() {
         TransactionLogger::log_failure("datafeed", "btc_usd", "Network connection timeout");
-    }
-
-    #[test]
-    fn test_log_gas_estimation() {
-        TransactionLogger::log_gas_estimation(100000, 150000, 1.5);
     }
 
     #[test]
@@ -42,28 +32,6 @@ mod transaction_logger_tests {
         let old_price = U256::from(20_000_000_000u64);
         let new_price = U256::from(25_000_000_000u64);
         TransactionLogger::log_fee_bump(1, old_price, new_price);
-    }
-
-    #[test]
-    fn test_log_transaction_details() {
-        TransactionLogger::log_transaction_details(
-            "0x1234567890123456789012345678901234567890",
-            Some("transfer"),
-            Some(100000),
-            Some(U256::from(50_000_000_000u64)),
-            Some(U256::from(2_000_000_000u64)),
-        );
-    }
-
-    #[test]
-    fn test_log_transaction_details_minimal() {
-        TransactionLogger::log_transaction_details(
-            "0x1234567890123456789012345678901234567890",
-            None,
-            None,
-            None,
-            None,
-        );
     }
 
     #[test]

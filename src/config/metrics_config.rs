@@ -92,7 +92,7 @@ fn default_enabled() -> bool {
 }
 
 fn default_port() -> u16 {
-    9090
+    crate::constants::metrics::METRICS_SERVER_PORT
 }
 
 fn default_detailed_metrics() -> bool {

@@ -2,7 +2,7 @@
 mod tests {
     mod gas_estimator_tests {
         use crate::config::models::{FeeBumpingConfig, GasConfig, Network};
-        use crate::gas::estimator::{GasEstimate, GasEstimator};
+        use crate::gas::estimator::GasEstimate;
         use alloy::primitives::U256;
 
         fn create_test_network(tx_type: &str) -> Network {
@@ -340,7 +340,7 @@ mod tests {
 
     mod transaction_builder_tests {
         use crate::gas::estimator::GasEstimate;
-        use alloy::primitives::{Address, U256};
+        use alloy::primitives::U256;
 
         #[test]
         fn test_transaction_request_with_gas() {

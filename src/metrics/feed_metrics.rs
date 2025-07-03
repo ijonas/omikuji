@@ -294,9 +294,9 @@ mod tests {
         ];
 
         for (i, &timestamp) in timestamps.iter().enumerate() {
-            FeedMetrics::set_feed_value(&format!("test_feed_{}", i), "testnet", 100.0, timestamp);
+            FeedMetrics::set_feed_value(&format!("test_feed_{i}"), "testnet", 100.0, timestamp);
             FeedMetrics::set_contract_value(
-                &format!("test_feed_{}", i),
+                &format!("test_feed_{i}"),
                 "testnet",
                 100.0,
                 timestamp,

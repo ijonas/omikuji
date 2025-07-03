@@ -214,7 +214,7 @@ mod tests {
         for url in invalid_urls {
             let network = create_test_network("test", url);
             let result = NetworkManager::new(&[network]).await;
-            assert!(result.is_err(), "Should fail for URL: {}", url);
+            assert!(result.is_err(), "Should fail for URL: {url}");
         }
     }
 
@@ -249,7 +249,6 @@ mod tests {
     }
 
     mod provider_tests {
-        use super::*;
 
         #[test]
         fn test_provider_url_parsing() {
@@ -265,13 +264,12 @@ mod tests {
 
             for (url, should_be_valid) in test_cases {
                 let parsed = url::Url::parse(url);
-                assert_eq!(parsed.is_ok(), should_be_valid, "URL: {}", url);
+                assert_eq!(parsed.is_ok(), should_be_valid, "URL: {url}");
             }
         }
     }
 
     mod signer_tests {
-        use super::*;
 
         #[test]
         fn test_private_key_format() {

@@ -107,7 +107,7 @@ mod tests {
 
         match task.validate() {
             Ok(()) => {}
-            Err(e) => panic!("Validation failed: {}", e),
+            Err(e) => panic!("Validation failed: {e}"),
         }
     }
 
@@ -312,8 +312,7 @@ mod tests {
 
             assert!(
                 task.validate().is_ok(),
-                "Schedule '{}' should be valid",
-                schedule
+                "Schedule '{schedule}' should be valid"
             );
         }
     }

@@ -453,7 +453,7 @@ mod tests {
                     assert_eq!(name, expected_name);
                     assert_eq!(ret_type, expected_type);
                 }
-                Err(e) => panic!("Failed to parse '{}': {}", sig, e),
+                Err(e) => panic!("Failed to parse '{sig}': {e}"),
             }
         }
     }

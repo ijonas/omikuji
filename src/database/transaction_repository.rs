@@ -31,24 +31,6 @@ pub struct TransactionLog {
     pub created_at: DateTime<Utc>,
 }
 
-/// Transaction statistics
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct TransactionStats {
-    pub feed_name: String,
-    pub network_name: String,
-    pub total_transactions: i64,
-    pub successful_transactions: i64,
-    pub failed_transactions: i64,
-    pub error_transactions: i64,
-    pub avg_gas_used: Option<f64>,
-    pub avg_gas_price_gwei: Option<f64>,
-    pub avg_efficiency_percent: Option<f64>,
-    pub total_cost_wei: Option<String>,
-    pub first_transaction: Option<DateTime<Utc>>,
-    pub last_transaction: Option<DateTime<Utc>>,
-}
-
 impl TransactionLogRepository {
     /// Create a new repository instance
     pub fn new(pool: DatabasePool) -> Self {
@@ -105,151 +87,6 @@ impl TransactionLogRepository {
 
         Ok(result.0)
     }
-
-    /// Get transaction logs for a specific feed
-    #[allow(dead_code)]
-    pub async fn get_by_feed(
-        &self,
-        feed_name: &str,
-        network_name: &str,
-        limit: i64,
-    ) -> Result<Vec<TransactionLog>> {
-        let logs = sqlx::query_as::<_, TransactionLog>(
-            r#"
-            SELECT * FROM transaction_log
-            WHERE feed_name = $1 AND network_name = $2
-            ORDER BY created_at DESC
-            LIMIT $3
-            "#,
-        )
-        .bind(feed_name)
-        .bind(network_name)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to fetch transaction logs")?;
-
-        Ok(logs)
-    }
-
-    /// Get transaction statistics for all feeds
-    #[allow(dead_code)]
-    pub async fn get_stats(&self) -> Result<Vec<TransactionStats>> {
-        let stats = sqlx::query_as::<_, TransactionStats>(
-            r#"
-            SELECT * FROM transaction_stats
-            ORDER BY network_name, feed_name
-            "#,
-        )
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to fetch transaction stats")?;
-
-        Ok(stats)
-    }
-
-    /// Get daily gas costs for a specific network
-    #[allow(dead_code)]
-    pub async fn get_daily_costs(
-        &self,
-        network_name: &str,
-        days: i32,
-    ) -> Result<Vec<DailyGasCost>> {
-        let costs = sqlx::query_as::<_, DailyGasCost>(
-            r#"
-            SELECT 
-                date,
-                network_name,
-                feed_name,
-                transaction_count,
-                total_gas_used,
-                avg_gas_price_gwei,
-                total_cost_wei,
-                avg_efficiency_percent
-            FROM daily_gas_costs
-            WHERE network_name = $1 
-                AND date >= CURRENT_DATE - INTERVAL '$2 days'
-            ORDER BY date DESC, feed_name
-            "#,
-        )
-        .bind(network_name)
-        .bind(days)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to fetch daily gas costs")?;
-
-        Ok(costs)
-    }
-
-    /// Get high gas consumption transactions
-    #[allow(dead_code)]
-    pub async fn get_high_gas_transactions(
-        &self,
-        threshold_gwei: f64,
-        limit: i64,
-    ) -> Result<Vec<TransactionLog>> {
-        let logs = sqlx::query_as::<_, TransactionLog>(
-            r#"
-            SELECT * FROM transaction_log
-            WHERE gas_price_gwei > $1
-            ORDER BY gas_price_gwei DESC, created_at DESC
-            LIMIT $2
-            "#,
-        )
-        .bind(threshold_gwei)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to fetch high gas transactions")?;
-
-        Ok(logs)
-    }
-
-    /// Get inefficient transactions (low gas efficiency)
-    #[allow(dead_code)]
-    pub async fn get_inefficient_transactions(
-        &self,
-        efficiency_threshold: f64,
-        limit: i64,
-    ) -> Result<Vec<TransactionLog>> {
-        let logs = sqlx::query_as::<_, TransactionLog>(
-            r#"
-            SELECT * FROM transaction_log
-            WHERE efficiency_percent < $1 AND status = 'success'
-            ORDER BY efficiency_percent ASC, created_at DESC
-            LIMIT $2
-            "#,
-        )
-        .bind(efficiency_threshold)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await
-        .context("Failed to fetch inefficient transactions")?;
-
-        Ok(logs)
-    }
-
-    /// Clean up old transaction logs
-    #[allow(dead_code)]
-    pub async fn cleanup_old_logs(&self, days_to_keep: i32) -> Result<u64> {
-        let result = sqlx::query(
-            r#"
-            DELETE FROM transaction_log
-            WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '$1 days'
-            "#,
-        )
-        .bind(days_to_keep)
-        .execute(&self.pool)
-        .await
-        .context("Failed to cleanup old transaction logs")?;
-
-        let deleted = result.rows_affected();
-        if deleted > 0 {
-            debug!("Cleaned up {} old transaction logs", deleted);
-        }
-
-        Ok(deleted)
-    }
 }
 
 #[cfg(test)]
@@ -299,31 +136,6 @@ mod tests {
         assert_eq!(log.tx_hash, "0xtest123");
         assert_eq!(log.efficiency_percent, 80.0);
         assert_eq!(log.status, "success");
-    }
-
-    #[test]
-    fn test_transaction_stats_struct() {
-        let now = Utc::now();
-        let stats = TransactionStats {
-            feed_name: "eth_usd".to_string(),
-            network_name: "ethereum".to_string(),
-            total_transactions: 100,
-            successful_transactions: 95,
-            failed_transactions: 3,
-            error_transactions: 2,
-            avg_gas_used: Some(125000.0),
-            avg_gas_price_gwei: Some(30.5),
-            avg_efficiency_percent: Some(82.5),
-            total_cost_wei: Some("375000000000000000".to_string()),
-            first_transaction: Some(now - chrono::Duration::days(7)),
-            last_transaction: Some(now),
-        };
-
-        assert_eq!(stats.total_transactions, 100);
-        assert_eq!(stats.successful_transactions, 95);
-        assert_eq!(stats.failed_transactions, 3);
-        assert_eq!(stats.error_transactions, 2);
-        assert_eq!(stats.avg_efficiency_percent, Some(82.5));
     }
 
     #[test]
@@ -444,18 +256,4 @@ mod tests {
             .unwrap()
             .contains("Insufficient funds"));
     }
-}
-
-/// Daily gas cost summary
-#[derive(Debug, Clone, sqlx::FromRow)]
-#[allow(dead_code)]
-pub struct DailyGasCost {
-    pub date: chrono::NaiveDate,
-    pub network_name: String,
-    pub feed_name: String,
-    pub transaction_count: i64,
-    pub total_gas_used: i64,
-    pub avg_gas_price_gwei: f64,
-    pub total_cost_wei: String, // Store as string to avoid BigDecimal issues
-    pub avg_efficiency_percent: f64,
 }

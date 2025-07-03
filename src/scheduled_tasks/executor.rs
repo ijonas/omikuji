@@ -418,7 +418,7 @@ mod tests {
         match encoded {
             DynSolValue::Address(addr) => {
                 assert_eq!(
-                    format!("{:?}", addr),
+                    format!("{addr:?}"),
                     "0x1234567890123456789012345678901234567890"
                 );
             }

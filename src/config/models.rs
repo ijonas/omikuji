@@ -249,6 +249,19 @@ pub struct Network {
     pub gas_token_symbol: String,
 }
 
+impl Default for Network {
+    fn default() -> Self {
+        Self {
+            name: "localhost".to_string(),
+            rpc_url: "http://localhost:8545".to_string(),
+            transaction_type: default_transaction_type(),
+            gas_config: GasConfig::default(),
+            gas_token: default_gas_token(),
+            gas_token_symbol: default_gas_token_symbol(),
+        }
+    }
+}
+
 /// Gas configuration for a network
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct GasConfig {
@@ -311,7 +324,7 @@ fn default_gas_token_symbol() -> String {
 }
 
 fn default_gas_multiplier() -> f64 {
-    1.2
+    crate::constants::gas::GAS_ESTIMATION_MULTIPLIER
 }
 
 fn default_true() -> bool {
@@ -319,15 +332,15 @@ fn default_true() -> bool {
 }
 
 fn default_max_retries() -> u8 {
-    3
+    crate::constants::gas::MAX_FEE_BUMP_ATTEMPTS as u8
 }
 
 fn default_initial_wait() -> u64 {
-    30
+    crate::constants::time::RPC_TIMEOUT_SECS
 }
 
 fn default_fee_increase_percent() -> f64 {
-    10.0
+    (crate::constants::gas::FEE_BUMP_MULTIPLIER - 1.0) * 100.0
 }
 
 impl Default for GasConfig {

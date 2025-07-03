@@ -378,8 +378,7 @@ mod tests {
 
             assert!(
                 runway >= 0.0 || runway.is_infinite(),
-                "Failed for scenario: {}",
-                scenario
+                "Failed for scenario: {scenario}"
             );
         }
     }
@@ -406,7 +405,7 @@ mod tests {
         }
 
         let final_balance = balance_counter.load(Ordering::SeqCst);
-        assert!(final_balance >= 1000 && final_balance <= 1900);
+        assert!((1000..=1900).contains(&final_balance));
     }
 
     #[test]
@@ -468,9 +467,7 @@ mod tests {
 
             assert!(
                 safe_interval > 0 && safe_interval <= 86400,
-                "Invalid interval for {}: {}",
-                description,
-                safe_interval
+                "Invalid interval for {description}: {safe_interval}"
             );
         }
     }

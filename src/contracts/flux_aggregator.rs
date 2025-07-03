@@ -217,39 +217,6 @@ impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContr
         Ok(decoded._0)
     }
 
-    /// Get description
-    #[allow(dead_code)]
-    pub async fn description(&self) -> Result<String> {
-        let call = IFluxAggregator::descriptionCall {};
-        let tx = TransactionRequest::default()
-            .to(self.address)
-            .input(call.abi_encode().into());
-        let result = self.provider.call(&tx).block(BlockId::latest()).await?;
-
-        let decoded = IFluxAggregator::descriptionCall::abi_decode_returns(&result, true)?;
-        Ok(decoded._0)
-    }
-
-    /// Get oracle round state
-    #[allow(dead_code)]
-    pub async fn oracle_round_state(
-        &self,
-        oracle: Address,
-        queried_round_id: u32,
-    ) -> Result<IFluxAggregator::oracleRoundStateReturn> {
-        let call = IFluxAggregator::oracleRoundStateCall {
-            _oracle: oracle,
-            _queriedRoundId: queried_round_id,
-        };
-        let tx = TransactionRequest::default()
-            .to(self.address)
-            .input(call.abi_encode().into());
-        let result = self.provider.call(&tx).block(BlockId::latest()).await?;
-
-        let decoded = IFluxAggregator::oracleRoundStateCall::abi_decode_returns(&result, true)?;
-        Ok(decoded)
-    }
-
     /// Submit a new price to the FluxAggregator contract with gas estimation and retry logic
     pub async fn submit_price_with_gas_estimation(
         &self,
@@ -589,7 +556,7 @@ mod tests {
     fn test_address_creation() {
         let addr_str = "0x1234567890123456789012345678901234567890";
         let addr = addr_str.parse::<Address>().unwrap();
-        assert_eq!(format!("0x{:x}", addr), addr_str.to_lowercase());
+        assert_eq!(format!("0x{addr:x}"), addr_str.to_lowercase());
     }
 
     #[test]

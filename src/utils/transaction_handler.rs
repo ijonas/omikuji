@@ -9,7 +9,6 @@ use tracing::info;
 
 /// Context for the transaction (e.g., "datafeed" or "scheduled_task")
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum TransactionContext {
     Datafeed { feed_name: String },
     ScheduledTask { task_name: String },
@@ -102,7 +101,9 @@ impl<'a> TransactionHandler<'a> {
                     UpdateMetrics::record_update_lag(
                         feed_name,
                         &self.network,
-                        current_time.saturating_sub(60), // Approximate feed timestamp (1 minute ago)
+                        current_time.saturating_sub(
+                            crate::constants::time::FEED_TIMESTAMP_APPROXIMATION_SECS,
+                        ),
                         current_time,
                     );
                 }
