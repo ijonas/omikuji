@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use secrecy::SecretString;
 use std::path::PathBuf;
 
-use crate::wallet::key_storage::{KeyStorage, KeyringStorage};
+use omikuji::wallet::key_storage::{KeyStorage, KeyringStorage};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -204,7 +204,7 @@ async fn export_key(network: String, service: Option<String>) -> Result<()> {
 }
 
 async fn migrate_keys(service: Option<String>) -> Result<()> {
-    use crate::wallet::key_storage::{EnvVarStorage, KeyStorage};
+    use omikuji::wallet::key_storage::{EnvVarStorage, KeyStorage};
 
     let env_storage = EnvVarStorage::new();
     let keyring_storage = KeyringStorage::new(service);

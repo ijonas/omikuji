@@ -222,7 +222,7 @@ async fn execute_task(
         .gas_config
         .as_ref()
         .and_then(|cfg| cfg.gas_limit)
-        .unwrap_or(300_000); // Default gas limit if not specified
+        .unwrap_or(crate::constants::gas::DEFAULT_GAS_LIMIT);
 
     // Default to eip1559 transaction type
     // TODO: Get from network config when available

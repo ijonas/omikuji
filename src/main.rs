@@ -5,21 +5,10 @@ use clap::Parser;
 use tracing::{debug, error, info, warn};
 
 mod cli;
-mod config;
-mod contracts;
-mod database;
-mod datafeed;
-mod gas;
-mod gas_price;
-mod metrics;
-mod network;
-mod scheduled_tasks;
-mod ui;
-mod utils;
-mod wallet;
 
 use cli::{Cli, Commands};
-use wallet::KeyStorage;
+use omikuji::wallet::KeyStorage;
+use omikuji::{config, database, datafeed, gas_price, metrics, network, scheduled_tasks, ui};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -110,7 +99,7 @@ async fn main() -> Result<()> {
     };
 
     // Load wallets based on key storage configuration
-    use crate::wallet::key_storage::{
+    use omikuji::wallet::key_storage::{
         AwsSecretsStorage, EnvVarStorage, KeyringStorage, VaultStorage,
     };
 
@@ -445,7 +434,8 @@ async fn main() -> Result<()> {
     }
 
     // Start wallet balance monitor
-    let mut wallet_monitor = wallet::WalletBalanceMonitor::new(Arc::clone(&network_manager));
+    let mut wallet_monitor =
+        omikuji::wallet::WalletBalanceMonitor::new(Arc::clone(&network_manager));
     if let Some(ref gas_price_manager) = gas_price_manager {
         wallet_monitor = wallet_monitor.with_gas_price_manager(Arc::clone(gas_price_manager));
     }

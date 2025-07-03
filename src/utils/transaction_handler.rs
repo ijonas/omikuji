@@ -102,7 +102,9 @@ impl<'a> TransactionHandler<'a> {
                     UpdateMetrics::record_update_lag(
                         feed_name,
                         &self.network,
-                        current_time.saturating_sub(60), // Approximate feed timestamp (1 minute ago)
+                        current_time.saturating_sub(
+                            crate::constants::time::FEED_TIMESTAMP_APPROXIMATION_SECS,
+                        ),
                         current_time,
                     );
                 }
