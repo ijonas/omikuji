@@ -126,6 +126,9 @@ mod tests {
         let monitors = vec![monitor.clone(), monitor];
         let result = parse_event_monitors(monitors);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Duplicate event monitor name"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Duplicate monitor name"));
     }
 }

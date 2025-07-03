@@ -58,6 +58,7 @@ impl NetworkBuilder {
         Network {
             name: self.name,
             rpc_url: self.rpc_url,
+            ws_url: None,
             transaction_type: self.transaction_type,
             gas_config: self.gas_config,
             gas_token: self.gas_token,
@@ -156,6 +157,7 @@ impl ConfigBuilder {
             metrics: self.metrics,
             gas_price_feeds: self.gas_price_feeds,
             scheduled_tasks: self.scheduled_tasks,
+            event_monitors: vec![],
         }
     }
 

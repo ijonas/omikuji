@@ -299,6 +299,7 @@ mod tests {
                 networks: vec![Network {
                     name: "test-network".to_string(),
                     rpc_url: "http://localhost:8545".to_string(),
+                    ws_url: None,
                     transaction_type: "eip1559".to_string(),
                     gas_config: Default::default(),
                     gas_token: "ethereum".to_string(),
@@ -326,6 +327,7 @@ mod tests {
                 metrics: Default::default(),
                 gas_price_feeds: Default::default(),
                 scheduled_tasks: vec![],
+                event_monitors: vec![],
             }
         }
 
@@ -519,6 +521,7 @@ mod tests {
                 metrics: Default::default(),
                 gas_price_feeds: Default::default(),
                 scheduled_tasks: vec![],
+                event_monitors: vec![],
             };
 
             // NetworkManager::new is async, so we can't test it in a sync test

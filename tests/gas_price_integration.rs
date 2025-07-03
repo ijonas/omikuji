@@ -170,6 +170,7 @@ fn create_test_config() -> OmikujiConfig {
         networks: vec![Network {
             name: "ethereum-mainnet".to_string(),
             rpc_url: "https://eth.public-rpc.com".to_string(),
+            ws_url: None,
             transaction_type: "eip1559".to_string(),
             gas_config: GasConfig::default(),
             gas_token: "ethereum".to_string(),
@@ -217,5 +218,6 @@ fn create_test_config() -> OmikujiConfig {
             },
         },
         scheduled_tasks: vec![],
+        event_monitors: vec![],
     }
 }

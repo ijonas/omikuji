@@ -12,6 +12,7 @@ mod examples {
         let old_network = Network {
             name: "test".to_string(),
             rpc_url: "http://localhost:8545".to_string(),
+            ws_url: None,
             transaction_type: "eip1559".to_string(),
             gas_config: Default::default(),
             gas_token: "ethereum".to_string(),
