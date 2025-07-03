@@ -326,6 +326,7 @@ mod tests {
                 key_storage: Default::default(),
                 metrics: Default::default(),
                 gas_price_feeds: Default::default(),
+                scheduled_tasks: vec![],
             }
         }
 
@@ -519,6 +520,7 @@ mod tests {
                 key_storage: Default::default(),
                 metrics: Default::default(),
                 gas_price_feeds: Default::default(),
+                scheduled_tasks: vec![],
             };
 
             // NetworkManager::new is async, so we can't test it in a sync test

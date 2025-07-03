@@ -1,0 +1,47 @@
+networks:
+  - name: anvil
+    rpc_url: http://localhost:8545
+    transaction_type: eip1559
+
+scheduled_tasks:
+  - name: "set_rewards"
+    network: "anvil"
+    schedule: "0 * * * * *"
+    check_condition: 
+      contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      function: "canDistributeRewards()" 
+      expected_value: true
+    target_function:
+      contract_address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      function: "distributeRewards(uint256 totalAmount, address[] _recipients)"
+      parameters:
+        - value: "1000000000000000000"
+          type: "uint256"
+        - value: ["0x5FbDB2315678afecb367f032d93F642f64180aa3", "0x301cB4ddD384BfcF0Bf0E9CbA1784A2899262554"]
+          type: "address[]"
+
+datafeeds:
+  - name: eth_usd
+    networks: anvil
+    check_frequency: 60  # Check every minute
+    contract_address: 0x5c74c94173F05dA1720953407cbb920F3DF9f887
+    contract_type: fluxmon
+    read_contract_config: true
+    minimum_update_frequency: 3600  # Update at least hourly
+    deviation_threshold_pct: 0.5  # Update on 0.5% price change
+    feed_url: https://api.coinbase.com/v2/exchange-rates?currency=ETH
+    feed_json_path: data.rates.ETH
+    data_retention_days: 7  # Keep 7 days of history
+
+  # BTC/USD price feed with 30-day data retention
+  - name: btc_usd
+    networks: anvil
+    check_frequency: 120  # Check every 2 minutes
+    contract_address: 0x720472c8ce72c2A2D711333e064ABD3E6BbEAdd3
+    contract_type: fluxmon
+    read_contract_config: true
+    minimum_update_frequency: 3600  # Update at least every 2 hours
+    deviation_threshold_pct: 0.5  # Update on 1% price change
+    feed_url: https://api.coinbase.com/v2/exchange-rates?currency=BTC
+    feed_json_path: data.rates.USD
+    data_retention_days: 30  # Keep 30 days of history

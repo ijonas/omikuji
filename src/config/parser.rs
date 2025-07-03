@@ -57,6 +57,24 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<OmikujiConfig, Conf
         }
     }
 
+    // Check if networks referenced by scheduled tasks exist
+    for task in &config.scheduled_tasks {
+        if !config.networks.iter().any(|n| n.name == task.network) {
+            return Err(ConfigError::Other(format!(
+                "Scheduled task '{}' references network '{}' which is not defined",
+                task.name, task.network
+            )));
+        }
+
+        // Validate the scheduled task
+        task.validate().map_err(|e| {
+            ConfigError::Other(format!(
+                "Scheduled task '{}' validation failed: {}",
+                task.name, e
+            ))
+        })?;
+    }
+
     Ok(config)
 }
 

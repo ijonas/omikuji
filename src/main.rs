@@ -13,7 +13,9 @@ mod gas;
 mod gas_price;
 mod metrics;
 mod network;
+mod scheduled_tasks;
 mod ui;
+mod utils;
 mod wallet;
 
 use cli::{Cli, Commands};
@@ -337,9 +339,9 @@ async fn main() -> Result<()> {
     };
 
     // Initialize and start datafeed monitoring
-    let mut feed_manager = if let Some(pool) = database_pool {
+    let mut feed_manager = if let Some(ref pool) = &database_pool {
         let mut manager = datafeed::FeedManager::new(config.clone(), Arc::clone(&network_manager))
-            .with_repository(pool);
+            .with_repository(pool.clone());
 
         // Add gas price manager if available
         if let Some(ref gas_price_manager) = gas_price_manager {
@@ -359,6 +361,77 @@ async fn main() -> Result<()> {
     };
 
     feed_manager.start().await;
+
+    // Initialize and start scheduled task manager
+    let scheduled_task_manager = if !config.scheduled_tasks.is_empty() {
+        info!(
+            "Initializing scheduled task manager with {} tasks",
+            config.scheduled_tasks.len()
+        );
+
+        // Debug output for each scheduled task
+        for (i, task) in config.scheduled_tasks.iter().enumerate() {
+            debug!("Scheduled task {}: {:?}", i, task);
+            info!(
+                "Task '{}': schedule='{}', network='{}', function='{}'",
+                task.name, task.schedule, task.network, task.target_function.function
+            );
+            if let Some(ref condition) = task.check_condition {
+                match condition {
+                    scheduled_tasks::models::CheckCondition::Property {
+                        property,
+                        expected_value,
+                        ..
+                    } => {
+                        debug!(
+                            "  Condition: property '{}' should be {:?}",
+                            property, expected_value
+                        );
+                    }
+                    scheduled_tasks::models::CheckCondition::Function {
+                        function,
+                        expected_value,
+                        ..
+                    } => {
+                        debug!(
+                            "  Condition: function '{}' should return {:?}",
+                            function, expected_value
+                        );
+                    }
+                }
+            }
+        }
+
+        let mut task_manager = scheduled_tasks::ScheduledTaskManager::new(
+            config.scheduled_tasks.clone(),
+            Arc::clone(&network_manager),
+        )
+        .await
+        .context("Failed to create scheduled task manager")?;
+
+        // Add gas price manager if available
+        if let Some(ref gas_price_manager) = gas_price_manager {
+            task_manager = task_manager.with_gas_price_manager(Arc::clone(gas_price_manager));
+        }
+
+        // Add transaction repository if database is available
+        if let Some(ref pool) = &database_pool {
+            let tx_repo = Arc::new(
+                database::transaction_repository::TransactionLogRepository::new(pool.clone()),
+            );
+            task_manager = task_manager.with_tx_log_repo(tx_repo);
+        }
+
+        task_manager
+            .start()
+            .await
+            .context("Failed to start scheduled task manager")?;
+
+        Some(Arc::new(task_manager))
+    } else {
+        info!("No scheduled tasks configured");
+        None
+    };
 
     // Start Prometheus metrics server
     if let Err(e) = metrics::start_metrics_server(9090).await {
@@ -401,6 +474,15 @@ async fn main() -> Result<()> {
     // Keep the application running
     tokio::signal::ctrl_c().await?;
     info!("Received shutdown signal, stopping...");
+
+    // Stop scheduled task manager if running
+    if let Some(task_manager) = scheduled_task_manager {
+        if let Err(e) = task_manager.stop().await {
+            error!("Error stopping scheduled task manager: {}", e);
+        } else {
+            info!("Scheduled task manager stopped successfully");
+        }
+    }
 
     // Stop cleanup manager if running
     if let Some(mut cleanup_manager) = cleanup_manager {
@@ -447,6 +529,7 @@ mod tests {
             },
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
+            scheduled_tasks: vec![],
         }
     }
 

@@ -20,6 +20,7 @@ use crate::database::TransactionLogRepository;
 use crate::gas_price::GasPriceManager;
 use crate::metrics::{FeedMetrics, SkipReason, UpdateMetrics, UpdateReason};
 use crate::network::NetworkManager;
+use crate::utils::{TransactionContext, TransactionHandler};
 
 /// Handles contract updates based on time and deviation thresholds
 pub struct ContractUpdater<'a> {
@@ -339,62 +340,16 @@ impl<'a> ContractUpdater<'a> {
             .await
         {
             Ok(receipt) => {
-                info!(
-                    "Successfully submitted value to contract. Tx hash: 0x{:x}, Gas used: {}",
-                    receipt.transaction_hash, receipt.gas_used
-                );
+                // Use the standardized transaction handler
+                let context = TransactionContext::Datafeed {
+                    feed_name: datafeed.name.clone(),
+                };
 
-                // Record successful update attempt
-                UpdateMetrics::record_update_attempt(&datafeed.name, &datafeed.networks, true);
-
-                // Record update lag if we have timestamp info
-                if let Ok(current_time) = current_timestamp() {
-                    UpdateMetrics::record_update_lag(
-                        &datafeed.name,
-                        &datafeed.networks,
-                        current_time - 60, // Approximate feed timestamp (1 minute ago)
-                        current_time,
-                    );
-                }
-
-                // Record contract update in metrics
-                FeedMetrics::record_contract_update(&datafeed.name, &datafeed.networks);
-
-                // Calculate and record USD cost if gas price manager is available
-                if let Some(gas_price_manager) = self.gas_price_manager {
-                    let gas_used = receipt.gas_used;
-                    let effective_gas_price = receipt.effective_gas_price;
-                    let tx_hash = format!("0x{:x}", receipt.transaction_hash);
-
-                    if let Some(gas_cost_usd) = gas_price_manager
-                        .calculate_usd_cost(
-                            &datafeed.networks,
-                            &datafeed.name,
-                            &tx_hash,
-                            gas_used as u64,
-                            effective_gas_price,
-                        )
-                        .await
-                    {
-                        // Record USD cost metrics
-                        use crate::metrics::gas_metrics::GasMetrics;
-                        GasMetrics::record_usd_cost(
-                            &datafeed.name,
-                            &datafeed.networks,
-                            gas_used as u64,
-                            effective_gas_price,
-                            gas_cost_usd.gas_token_price_usd,
-                        );
-
-                        info!(
-                            "Transaction cost: ${:.6} USD (gas: {}, price: {} wei, token: ${:.2})",
-                            gas_cost_usd.total_cost_usd,
-                            gas_used,
-                            effective_gas_price,
-                            gas_cost_usd.gas_token_price_usd
-                        );
-                    }
-                }
+                TransactionHandler::new(receipt, context, datafeed.networks.clone())
+                    .with_gas_price_manager(self.gas_price_manager)
+                    .with_tx_log_repo(self.tx_log_repo.as_ref())
+                    .process()
+                    .await?;
 
                 Ok(())
             }

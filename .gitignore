@@ -10,3 +10,4 @@ config.yaml
 *.profdata
 coverage.lcov
 /target/coverage/
+web/

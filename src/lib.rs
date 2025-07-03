@@ -6,4 +6,6 @@ pub mod gas;
 pub mod gas_price;
 pub mod metrics;
 pub mod network;
+pub mod scheduled_tasks;
+pub mod utils;
 pub mod wallet;

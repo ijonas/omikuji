@@ -20,6 +20,7 @@ Detailed guides for specific features and use cases.
 - **[Prometheus Metrics](guides/prometheus-metrics.md)** - Monitor feeds, gas usage, and system health
 - **[Gas Monitoring](guides/gas-monitoring.md)** - Track and analyze gas consumption
 - **[Debug Logging](guides/debug-logging.md)** - Troubleshooting with detailed logs
+- **[Scheduled Tasks](guides/scheduled-tasks.md)** - Automate smart contract function execution
 
 ### 📋 Reference
 Complete technical reference documentation.
