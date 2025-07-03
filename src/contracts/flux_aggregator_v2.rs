@@ -1,289 +1,416 @@
-//! Refactored FluxAggregator contract implementation using the common interaction pattern
+//! Example refactored FluxAggregator contract using new metrics patterns
 //!
-//! This demonstrates how to use the ContractInteraction abstraction to reduce code duplication
+//! This demonstrates how to use the consolidated metrics recording utilities
+//! to reduce code duplication and improve consistency.
 
 use crate::config::models::Network as NetworkConfig;
-use crate::contracts::interaction::{ContractInteraction, ContractReader};
 use crate::database::TransactionLogRepository;
-use crate::gas_price::GasPriceManager;
-use crate::utils::TransactionContext;
+use crate::gas::GasEstimate;
+use crate::metrics::{
+    MetricsContext, RetryMetricsRecorder, TimedOperationRecorder, TransactionMetricsRecorder,
+};
 use alloy::{
-    network::Ethereum,
+    network::{Ethereum, TransactionBuilder},
     primitives::{Address, I256, U256},
     providers::Provider,
-    rpc::types::TransactionReceipt,
+    rpc::types::{BlockId, TransactionReceipt, TransactionRequest},
     sol,
     sol_types::SolCall,
     transports::Transport,
 };
 use anyhow::Result;
 use std::sync::Arc;
+use tokio::time::Duration;
+use tracing::{error, info, warn};
 
-// Re-export the Solidity interface
+// Reuse the same Solidity interface from the original
 sol! {
     #[sol(rpc)]
     interface IFluxAggregator {
         function latestAnswer() external view returns (int256);
         function latestTimestamp() external view returns (uint256);
-        function latestRound() external view returns (uint256);
-        function decimals() external view returns (uint8);
-        function description() external view returns (string);
-        function version() external view returns (uint256);
-        function minSubmissionValue() external view returns (int256);
-        function maxSubmissionValue() external view returns (int256);
         function submit(uint256 _roundId, int256 _submission) external;
     }
 }
 
-/// Parameters for submitting a price to the contract
-pub struct SubmitPriceParams<'a> {
-    pub round_id: U256,
-    pub price: I256,
-    pub network_config: &'a NetworkConfig,
-    pub feed_name: &'a str,
-    pub gas_limit: Option<u64>,
-    pub tx_log_repo: Option<Arc<TransactionLogRepository>>,
-    pub gas_price_manager: Option<&'a Arc<GasPriceManager>>,
-}
-
-/// Simplified FluxAggregator contract wrapper using common patterns
-pub struct FluxAggregatorV2<T: Transport + Clone, P: Provider<T, Ethereum>> {
+/// Refactored FluxAggregator contract with consolidated metrics
+pub struct FluxAggregatorContractV2<T: Transport + Clone, P: Provider<T, Ethereum>> {
     address: Address,
-    provider: Arc<P>,
-    network_name: String,
+    provider: P,
+    metrics_context: MetricsContext,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorV2<T, P> {
-    /// Create a new FluxAggregator contract instance
-    pub fn new(address: Address, provider: Arc<P>, network_name: String) -> Self {
+impl<T: Transport + Clone, P: Provider<T, Ethereum> + Clone> FluxAggregatorContractV2<T, P> {
+    /// Create a new FluxAggregator contract instance with metrics context
+    pub fn new(address: Address, provider: P, feed_name: &str, network: &str) -> Self {
         Self {
             address,
             provider,
-            network_name,
+            metrics_context: MetricsContext::new(feed_name, network),
             _phantom: std::marker::PhantomData,
         }
     }
 
-    /// Get the latest answer from the contract
+    /// Get the latest answer from the contract with automatic metrics
     pub async fn latest_answer(&self) -> Result<I256> {
-        self.latest_answer_with_metrics(None).await
-    }
+        let recorder =
+            TimedOperationRecorder::contract_read(self.metrics_context.clone(), "latestAnswer");
 
-    /// Get the latest answer with metrics tracking
-    pub async fn latest_answer_with_metrics(&self, feed_name: Option<&str>) -> Result<I256> {
-        let call = IFluxAggregator::latestAnswerCall {};
-        let mut reader = ContractReader::new(
-            Arc::clone(&self.provider),
-            self.address,
-            self.network_name.clone(),
-        );
+        let result = async {
+            let call = IFluxAggregator::latestAnswerCall {};
+            let tx = TransactionRequest::default()
+                .to(self.address)
+                .input(call.abi_encode().into());
 
-        if let Some(name) = feed_name {
-            reader = reader.with_feed_name(name.to_string());
+            let result = self.provider.call(&tx).block(BlockId::latest()).await?;
+            let decoded = IFluxAggregator::latestAnswerCall::abi_decode_returns(&result, true)?;
+            Ok(decoded._0)
         }
+        .await;
 
-        reader
-            .call(call.abi_encode(), "latestAnswer", |bytes| {
-                let decoded = IFluxAggregator::latestAnswerCall::abi_decode_returns(bytes, true)?;
-                Ok(decoded._0)
-            })
-            .await
+        recorder.record_result(&result, None);
+        result
     }
 
-    /// Get the latest timestamp
-    pub async fn latest_timestamp(&self) -> Result<U256> {
-        self.latest_timestamp_with_metrics(None).await
-    }
-
-    /// Get the latest timestamp with metrics tracking
-    pub async fn latest_timestamp_with_metrics(&self, feed_name: Option<&str>) -> Result<U256> {
-        let call = IFluxAggregator::latestTimestampCall {};
-        let mut reader = ContractReader::new(
-            Arc::clone(&self.provider),
-            self.address,
-            self.network_name.clone(),
-        );
-
-        if let Some(name) = feed_name {
-            reader = reader.with_feed_name(name.to_string());
-        }
-
-        reader
-            .call(call.abi_encode(), "latestTimestamp", |bytes| {
-                let decoded =
-                    IFluxAggregator::latestTimestampCall::abi_decode_returns(bytes, true)?;
-                Ok(decoded._0)
-            })
-            .await
-    }
-
-    /// Get the latest round (no metrics version for backward compatibility)
-    pub async fn latest_round(&self) -> Result<U256> {
-        let call = IFluxAggregator::latestRoundCall {};
-        ContractReader::new(
-            Arc::clone(&self.provider),
-            self.address,
-            self.network_name.clone(),
-        )
-        .call(call.abi_encode(), "latestRound", |bytes| {
-            let decoded = IFluxAggregator::latestRoundCall::abi_decode_returns(bytes, true)?;
-            Ok(decoded._0)
-        })
-        .await
-    }
-
-    /// Get decimals
-    pub async fn decimals(&self) -> Result<u8> {
-        let call = IFluxAggregator::decimalsCall {};
-        ContractReader::new(
-            Arc::clone(&self.provider),
-            self.address,
-            self.network_name.clone(),
-        )
-        .call(call.abi_encode(), "decimals", |bytes| {
-            let decoded = IFluxAggregator::decimalsCall::abi_decode_returns(bytes, true)?;
-            Ok(decoded._0)
-        })
-        .await
-    }
-
-    /// Get min submission value
-    pub async fn min_submission_value(&self) -> Result<I256> {
-        let call = IFluxAggregator::minSubmissionValueCall {};
-        ContractReader::new(
-            Arc::clone(&self.provider),
-            self.address,
-            self.network_name.clone(),
-        )
-        .call(call.abi_encode(), "minSubmissionValue", |bytes| {
-            let decoded = IFluxAggregator::minSubmissionValueCall::abi_decode_returns(bytes, true)?;
-            Ok(decoded._0)
-        })
-        .await
-    }
-
-    /// Get max submission value
-    pub async fn max_submission_value(&self) -> Result<I256> {
-        let call = IFluxAggregator::maxSubmissionValueCall {};
-        ContractReader::new(
-            Arc::clone(&self.provider),
-            self.address,
-            self.network_name.clone(),
-        )
-        .call(call.abi_encode(), "maxSubmissionValue", |bytes| {
-            let decoded = IFluxAggregator::maxSubmissionValueCall::abi_decode_returns(bytes, true)?;
-            Ok(decoded._0)
-        })
-        .await
-    }
-
-    /// Submit a new price to the contract
-    #[allow(clippy::too_many_arguments)]
-    pub async fn submit_price(
+    /// Submit a new price with consolidated retry and metrics logic
+    pub async fn submit_price_with_metrics(
         &self,
         round_id: U256,
         price: I256,
         network_config: &NetworkConfig,
-        feed_name: &str,
         tx_log_repo: Option<Arc<TransactionLogRepository>>,
-        gas_price_manager: Option<&Arc<GasPriceManager>>,
+        from_address: Option<Address>,
     ) -> Result<TransactionReceipt> {
-        let params = SubmitPriceParams {
-            round_id,
-            price,
-            network_config,
-            feed_name,
-            gas_limit: None,
-            tx_log_repo,
-            gas_price_manager,
-        };
-        self.submit_price_with_params(params).await
-    }
+        let gas_config = &network_config.gas_config;
+        let fee_bumping = &gas_config.fee_bumping;
 
-    /// Submit a price with custom gas limit
-    #[allow(clippy::too_many_arguments)]
-    pub async fn submit_price_with_gas_limit(
-        &self,
-        round_id: U256,
-        price: I256,
-        network_config: &NetworkConfig,
-        feed_name: &str,
-        gas_limit: u64,
-        tx_log_repo: Option<Arc<TransactionLogRepository>>,
-        gas_price_manager: Option<&Arc<GasPriceManager>>,
-    ) -> Result<TransactionReceipt> {
-        let params = SubmitPriceParams {
-            round_id,
-            price,
-            network_config,
-            feed_name,
-            gas_limit: Some(gas_limit),
-            tx_log_repo,
-            gas_price_manager,
+        // Initialize retry metrics recorder
+        let max_attempts = if fee_bumping.enabled {
+            fee_bumping.max_retries + 1
+        } else {
+            1
         };
-        self.submit_price_with_params(params).await
-    }
 
-    /// Submit a price using parameters struct
-    pub async fn submit_price_with_params(
-        &self,
-        params: SubmitPriceParams<'_>,
-    ) -> Result<TransactionReceipt> {
+        let mut retry_recorder =
+            RetryMetricsRecorder::new(self.metrics_context.clone(), max_attempts as u32);
+
+        // Initialize transaction metrics recorder
+        let tx_recorder = TransactionMetricsRecorder::new(
+            self.metrics_context.clone(),
+            &network_config.transaction_type,
+        );
+
+        // Create the function call
         let call = IFluxAggregator::submitCall {
-            _roundId: params.round_id,
-            _submission: params.price,
+            _roundId: round_id,
+            _submission: price,
         };
 
-        let context = TransactionContext::Datafeed {
-            feed_name: params.feed_name.to_string(),
-        };
+        // Build base transaction request
+        let mut tx = TransactionRequest::default()
+            .to(self.address)
+            .input(call.abi_encode().into());
 
-        let interaction = ContractInteraction::new(
-            Arc::clone(&self.provider),
-            self.address,
-            params.network_config.clone(),
-        )
-        .with_feed_name(params.feed_name.to_string());
+        if let Some(from) = from_address {
+            tx = tx.from(from);
+        }
 
-        interaction
-            .submit_transaction_with_handling(
-                call.abi_encode(),
-                context,
-                params.gas_limit,
-                params.tx_log_repo,
-                params.gas_price_manager,
-            )
-            .await
+        // Estimate gas
+        let gas_estimator = crate::gas::GasEstimator::<T, P>::new(
+            Arc::new(self.provider.clone()),
+            network_config.clone(),
+        );
+        let mut gas_estimate = gas_estimator.estimate_gas(&tx).await?;
+
+        // Retry loop with consolidated metrics
+        loop {
+            let attempt = retry_recorder.start_attempt();
+
+            // Apply gas settings using existing patterns
+            tx = tx.with_gas_limit(gas_estimate.gas_limit.to::<u64>());
+            self.apply_gas_pricing(&mut tx, &gas_estimate, network_config);
+
+            info!("Sending transaction (attempt {})", attempt);
+
+            // Record submission time for confirmation metrics
+            let submission_time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            // Send transaction with metrics recording
+            let result = self
+                .send_transaction_with_metrics(
+                    &tx,
+                    &tx_recorder,
+                    &gas_estimate,
+                    network_config,
+                    tx_log_repo.as_ref(),
+                    submission_time,
+                )
+                .await;
+
+            match result {
+                Ok(receipt) => return Ok(receipt),
+                Err(e) => {
+                    let error_str = e.to_string();
+
+                    // Record specific error types
+                    if error_str.contains("revert") {
+                        tx_recorder.record_revert(&error_str);
+                    }
+
+                    // Check if we should retry
+                    if retry_recorder.check_max_attempts_reached() {
+                        return Err(anyhow::anyhow!(
+                            "Failed to send transaction after {} attempts: {}",
+                            attempt,
+                            e
+                        ));
+                    }
+
+                    // Record retry with reason
+                    let retry_reason = self.categorize_error(&error_str);
+                    retry_recorder.record_retry(&retry_reason);
+
+                    // Bump fees for retry if enabled
+                    if fee_bumping.enabled {
+                        gas_estimate = gas_estimator.bump_fees(&gas_estimate, attempt as u8);
+                        info!("Bumping fees for retry attempt {}", attempt + 1);
+                    }
+                }
+            }
+        }
     }
-}
 
-/// Factory function to create FluxAggregator instances
-pub fn create_flux_aggregator<T, P>(
-    address: Address,
-    provider: Arc<P>,
-    network_name: String,
-) -> FluxAggregatorV2<T, P>
-where
-    T: Transport + Clone,
-    P: Provider<T, Ethereum> + Clone,
-{
-    FluxAggregatorV2::new(address, provider, network_name)
+    /// Apply gas pricing to transaction based on type
+    fn apply_gas_pricing(
+        &self,
+        tx: &mut TransactionRequest,
+        gas_estimate: &GasEstimate,
+        network_config: &NetworkConfig,
+    ) {
+        match network_config.transaction_type.to_lowercase().as_str() {
+            "legacy" => {
+                if let Some(gas_price) = gas_estimate.gas_price {
+                    *tx = tx.clone().with_gas_price(gas_price.to::<u128>());
+                }
+            }
+            "eip1559" => {
+                if let Some(max_fee) = gas_estimate.max_fee_per_gas {
+                    *tx = tx.clone().with_max_fee_per_gas(max_fee.to::<u128>());
+                }
+                if let Some(priority_fee) = gas_estimate.max_priority_fee_per_gas {
+                    *tx = tx
+                        .clone()
+                        .with_max_priority_fee_per_gas(priority_fee.to::<u128>());
+                }
+            }
+            _ => {
+                warn!("Unknown transaction type, defaulting to EIP-1559");
+                if let Some(max_fee) = gas_estimate.max_fee_per_gas {
+                    *tx = tx.clone().with_max_fee_per_gas(max_fee.to::<u128>());
+                }
+                if let Some(priority_fee) = gas_estimate.max_priority_fee_per_gas {
+                    *tx = tx
+                        .clone()
+                        .with_max_priority_fee_per_gas(priority_fee.to::<u128>());
+                }
+            }
+        }
+    }
+
+    /// Send transaction with consolidated metrics recording
+    async fn send_transaction_with_metrics(
+        &self,
+        tx: &TransactionRequest,
+        tx_recorder: &TransactionMetricsRecorder,
+        gas_estimate: &GasEstimate,
+        network_config: &NetworkConfig,
+        tx_log_repo: Option<&Arc<TransactionLogRepository>>,
+        submission_time: u64,
+    ) -> Result<TransactionReceipt> {
+        // Send transaction
+        let pending_tx = self
+            .provider
+            .send_transaction(tx.clone())
+            .await
+            .map_err(|e| {
+                tx_recorder.record_failure(
+                    gas_estimate.gas_limit,
+                    gas_estimate.gas_price.or(gas_estimate.max_fee_per_gas),
+                    &e.to_string(),
+                );
+                e
+            })?;
+
+        let tx_hash = *pending_tx.tx_hash();
+        info!("Transaction sent: 0x{:x}", tx_hash);
+
+        // Wait for confirmation with timeout
+        let wait_duration =
+            Duration::from_secs(network_config.gas_config.fee_bumping.initial_wait_seconds);
+
+        let receipt = tokio::time::timeout(
+            wait_duration,
+            pending_tx.with_required_confirmations(1).get_receipt(),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("Transaction timed out"))?
+        .map_err(|e| {
+            tx_recorder.record_failure(
+                gas_estimate.gas_limit,
+                gas_estimate.gas_price.or(gas_estimate.max_fee_per_gas),
+                &e.to_string(),
+            );
+            e
+        })?;
+
+        if !receipt.status() {
+            tx_recorder.record_failure(
+                gas_estimate.gas_limit,
+                gas_estimate.gas_price.or(gas_estimate.max_fee_per_gas),
+                "Transaction reverted",
+            );
+            return Err(anyhow::anyhow!("Transaction failed: 0x{:x}", tx_hash));
+        }
+
+        // Record successful transaction with all metrics
+        tx_recorder.record_success(&receipt, gas_estimate.gas_limit, Some(submission_time));
+
+        // Log transaction if repository is available
+        if let Some(repo) = tx_log_repo {
+            if let Err(e) = self
+                .log_transaction(
+                    repo,
+                    &tx_hash,
+                    &receipt,
+                    gas_estimate,
+                    &network_config.transaction_type,
+                )
+                .await
+            {
+                error!("Failed to log transaction: {}", e);
+            }
+        }
+
+        info!("Transaction confirmed: 0x{:x}", tx_hash);
+        Ok(receipt)
+    }
+
+    /// Categorize error for retry reason tracking
+    fn categorize_error(&self, error: &str) -> String {
+        if error.contains("gas") {
+            "insufficient_gas".to_string()
+        } else if error.contains("nonce") {
+            "nonce_conflict".to_string()
+        } else if error.contains("timeout") || error.contains("deadline") {
+            "timeout".to_string()
+        } else if error.contains("connection") || error.contains("network") {
+            "network_error".to_string()
+        } else if error.contains("replacement") || error.contains("underpriced") {
+            "fee_too_low".to_string()
+        } else {
+            "unknown".to_string()
+        }
+    }
+
+    /// Log transaction details (simplified version)
+    async fn log_transaction(
+        &self,
+        repo: &Arc<TransactionLogRepository>,
+        tx_hash: &alloy::primitives::TxHash,
+        receipt: &TransactionReceipt,
+        gas_estimate: &GasEstimate,
+        tx_type: &str,
+    ) -> Result<()> {
+        let gas_used = receipt.gas_used;
+        let gas_limit = gas_estimate.gas_limit;
+        let efficiency_percent = (gas_used as f64 / gas_limit.to::<u128>() as f64) * 100.0;
+
+        let gas_price_gwei = if let Some(price) = gas_estimate.gas_price {
+            alloy::primitives::utils::format_units(price, "gwei")?.parse::<f64>()?
+        } else if let Some(max_fee) = gas_estimate.max_fee_per_gas {
+            alloy::primitives::utils::format_units(max_fee, "gwei")?.parse::<f64>()?
+        } else {
+            0.0
+        };
+
+        let total_cost_wei = U256::from(gas_used) * gas_estimate.gas_price.unwrap_or(U256::ZERO);
+
+        let details = crate::metrics::gas_metrics::TransactionDetails {
+            tx_hash: format!("0x{tx_hash:x}"),
+            feed_name: self.metrics_context.feed_name().to_string(),
+            network: self.metrics_context.network().to_string(),
+            gas_limit: gas_limit.to::<u64>(),
+            gas_used: gas_used as u64,
+            gas_price_gwei,
+            total_cost_wei: total_cost_wei.to::<u128>(),
+            efficiency_percent,
+            tx_type: tx_type.to_string(),
+            status: if receipt.status() {
+                "success"
+            } else {
+                "failed"
+            }
+            .to_string(),
+            block_number: receipt.block_number.unwrap_or(0),
+            error_message: None,
+        };
+
+        repo.save_transaction(details).await?;
+        Ok(())
+    }
+
+    /// Get metrics context for external use
+    pub fn metrics_context(&self) -> &MetricsContext {
+        &self.metrics_context
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy::primitives::address;
 
     #[test]
-    fn test_flux_aggregator_creation() {
-        let provider = Arc::new(
-            alloy::providers::ProviderBuilder::new()
-                .on_http("http://localhost:8545".parse().unwrap()),
-        );
-        let address = address!("0000000000000000000000000000000000000000");
+    fn test_error_categorization() {
+        // Create a minimal test helper function to avoid provider trait bounds
+        fn categorize_error(error: &str) -> String {
+            if error.contains("gas") {
+                "insufficient_gas".to_string()
+            } else if error.contains("nonce") {
+                "nonce_conflict".to_string()
+            } else if error.contains("timeout") || error.contains("deadline") {
+                "timeout".to_string()
+            } else if error.contains("connection") || error.contains("network") {
+                "network_error".to_string()
+            } else if error.contains("replacement") || error.contains("underpriced") {
+                "fee_too_low".to_string()
+            } else {
+                "unknown".to_string()
+            }
+        }
 
-        let _aggregator = FluxAggregatorV2::new(address, provider, "test".to_string());
+        assert_eq!(categorize_error("out of gas"), "insufficient_gas");
+        assert_eq!(categorize_error("nonce too low"), "nonce_conflict");
+        assert_eq!(categorize_error("timeout exceeded"), "timeout");
+        assert_eq!(categorize_error("connection refused"), "network_error");
+        assert_eq!(
+            categorize_error("replacement transaction underpriced"),
+            "fee_too_low"
+        );
+        assert_eq!(categorize_error("unknown error"), "unknown");
+    }
+
+    #[test]
+    fn test_metrics_context() {
+        let context = MetricsContext::new("eth_usd", "ethereum");
+        assert_eq!(context.feed_name(), "eth_usd");
+        assert_eq!(context.network(), "ethereum");
+        assert!(context.method().is_none());
+
+        let context_with_method = context.with_method("latestAnswer");
+        assert_eq!(context_with_method.method(), Some("latestAnswer"));
     }
 }

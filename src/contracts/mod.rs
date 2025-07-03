@@ -9,7 +9,7 @@ pub use abi_utils::{
     parse_function_signature, ContractCallBuilder,
 };
 pub use flux_aggregator::FluxAggregatorContract;
-pub use flux_aggregator_v2::FluxAggregatorV2;
+pub use flux_aggregator_v2::FluxAggregatorContractV2;
 pub use generic_caller::{create_contract_reader, MetricsAwareContractCaller};
 pub use interaction::{ContractInteraction, ContractReader};
 

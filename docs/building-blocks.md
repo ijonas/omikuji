@@ -46,6 +46,39 @@ This document outlines the core architectural patterns and building blocks used 
 
 ## 3. Metrics (`src/metrics`)
 
+**Pattern:** Consolidated Metrics Recording with `MetricsContext` and Specialized Recorders
+
+- **Description:** Metrics recording should be consistent across all modules to avoid duplication and ensure proper tracking. The metrics system uses context objects and specialized recorders to handle common patterns like timing operations, recording retries, and tracking transaction metrics.
+- **Key Components:**
+  - `MetricsContext`: Carries feed_name, network, and optional method information
+  - `TimedOperationRecorder`: Automatically tracks operation duration and success/failure
+  - `TransactionMetricsRecorder`: Handles all transaction-related metrics (gas, retries, reverts)
+  - `RetryMetricsRecorder`: Tracks retry attempts and reasons consistently
+  - `FeedMetricsRecorder`: Manages feed value and deviation metrics
+- **Usage:** 
+  ```rust
+  // Basic context creation
+  let context = MetricsContext::new("eth_usd", "ethereum");
+  
+  // Timed operations
+  let recorder = TimedOperationRecorder::contract_read(context.clone(), "latestAnswer");
+  let result = perform_operation().await;
+  recorder.record_result(&result, None);
+  
+  // Transaction metrics
+  let tx_recorder = TransactionMetricsRecorder::new(context, "eip1559");
+  tx_recorder.record_success(&receipt, gas_limit, Some(submission_time));
+  
+  // Retry tracking
+  let mut retry_recorder = RetryMetricsRecorder::new(context, max_attempts);
+  let attempt = retry_recorder.start_attempt();
+  if should_retry {
+      retry_recorder.record_retry("network_congestion");
+  }
+  ```
+- **Benefits:** Ensures consistent metrics labeling, reduces boilerplate, and provides structured retry/transaction tracking
+- **See:** `FluxAggregatorContractV2` for comprehensive example usage
+
 **Pattern:** `MetricsFactory`
 
 - **Description:** To simplify the creation of Prometheus metrics and ensure consistency, we use a `MetricsFactory`. This factory provides a simple interface for creating common metric types (counters, gauges, histograms).
@@ -316,6 +349,42 @@ This document outlines the core architectural patterns and building blocks used 
   - Automatic success/failure metrics recording
   - Consistent error context and logging
   - Reduced boilerplate in contract interaction code
+
+## 17. Error Handling and Context (`src/error_context.rs`, `src/error_handlers.rs`)
+
+**Pattern:** Consolidated Error Context and Domain-Specific Handlers
+
+- **Description:** Error messages and context patterns are centralized to ensure consistency and reduce duplication. Domain-specific error types provide better error categorization.
+- **Usage:** Use the error context helpers and extension traits instead of manual error formatting.
+- **Examples:**
+  ```rust
+  // Instead of:
+  .with_context(|| format!("Failed to create provider for network {}", network.name))?
+  
+  // Use:
+  .map_err(|e| NetworkOperationError::provider_creation(&network.name, e))?
+  
+  // Or with extension trait:
+  .context_network("get_chain_id", network_name)?
+  
+  // For database operations:
+  .context_db("insert", "feed_log")?
+  
+  // For validation:
+  validation::require_not_empty(&name, "network name")?;
+  validation::require_positive(gas_price, "gas price")?;
+  ```
+- **Key Components:**
+  - `error_context` module provides consistent message templates
+  - `ErrorContextExt` trait adds context methods to Result types
+  - Domain-specific error types (NetworkOperationError, DatabaseOperationError, etc.)
+  - Validation helpers for common checks
+  - Retry helper with context-aware error handling
+- **Benefits:**
+  - Consistent error messages across the codebase
+  - Reduced boilerplate in error handling
+  - Better error categorization and debugging
+  - Centralized location for error message updates
 
 ## Best Practices Summary
 

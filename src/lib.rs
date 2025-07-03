@@ -4,6 +4,8 @@ pub mod contracts;
 pub mod database;
 pub mod datafeed;
 pub mod error;
+pub mod error_context;
+pub mod error_handlers;
 pub mod gas;
 pub mod gas_price;
 pub mod metrics;
