@@ -104,6 +104,6 @@ fn main() {
 
     match result {
         Ok(_) => println!("\nUnexpected success!"),
-        Err(e) => println!("\nExpected error: {}", e),
+        Err(e) => println!("\nExpected error: {e}"),
     }
 }

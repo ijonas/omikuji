@@ -1,6 +1,6 @@
 //! Integration tests for event monitors
 
-use omikuji::config::models::{Network, OmikujiConfig};
+use omikuji::config::models::OmikujiConfig;
 use omikuji::event_monitors::models::{
     EventMonitor, HttpMethod, ResponseConfig, ResponseType, WebhookConfig,
 };

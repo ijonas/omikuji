@@ -183,7 +183,7 @@ mod examples {
 /// Example demonstrating test utility patterns for different scenarios
 #[cfg(test)]
 mod patterns {
-    use crate::test_utils::{assertions::*, builders::*, edge_cases::*, factories::*, mocks::*};
+    use crate::test_utils::{assertions::*, builders::*, edge_cases::*, mocks::*};
 
     /// Pattern: Testing configuration validation
     #[test]

@@ -3,6 +3,7 @@
 //! This module provides functionality to monitor blockchain events and trigger
 //! webhooks with event data, enabling reactive automation based on on-chain activity.
 
+pub mod abi_decoder;
 pub mod builder;
 pub mod config;
 pub mod error;

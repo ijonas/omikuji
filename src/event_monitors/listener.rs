@@ -386,7 +386,7 @@ mod tests {
                 .unwrap(),
         );
         let webhook_caller = Arc::new(WebhookCaller::new());
-        let response_handler = Arc::new(ResponseHandler::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager.clone()));
 
         let listener = EventListener::new(
             network_manager,

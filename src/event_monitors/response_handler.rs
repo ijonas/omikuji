@@ -1,18 +1,27 @@
 //! Response handling framework for webhook responses
 
+use super::abi_decoder::AbiDecoder;
 use super::error::{EventMonitorError, Result};
 use super::listener::{EventContext, ProcessedEvent};
 use super::metrics::EventMonitorMetricsContext;
 use super::models::{EventMonitor, ResponseType};
-use super::webhook_caller::WebhookResponse;
+use super::webhook_caller::{ContractCall, WebhookResponse};
+use crate::gas::transaction_builder::GasAwareTransactionBuilder;
+use crate::metrics::{MetricsContext, TimedOperationRecorder, TransactionMetricsRecorder};
+use crate::network::{EthProvider, NetworkManager};
+use crate::utils::{TransactionContext, TransactionLogger};
+use alloy::primitives::{Address, U256};
+use alloy::providers::Provider;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::{debug, info, warn};
 
 /// Handles webhook responses based on configured response type
 pub struct ResponseHandler {
     handlers: HashMap<ResponseType, Arc<dyn Handler>>,
+    _network_manager: Arc<NetworkManager>,
 }
 
 /// Trait for response handlers
@@ -31,8 +40,10 @@ pub trait Handler: Send + Sync {
 /// Handler that only logs the response
 pub struct LogOnlyHandler;
 
-/// Handler for contract calls (placeholder for Phase 2)
-pub struct ContractCallHandler;
+/// Handler for contract calls
+pub struct ContractCallHandler {
+    network_manager: Arc<NetworkManager>,
+}
 
 /// Handler for database storage (placeholder for Phase 4)
 pub struct StoreDbHandler;
@@ -44,11 +55,16 @@ pub struct MultiActionHandler {
 
 impl ResponseHandler {
     /// Create a new response handler with default handlers
-    pub fn new() -> Self {
+    pub fn new(network_manager: Arc<NetworkManager>) -> Self {
         let mut handlers: HashMap<ResponseType, Arc<dyn Handler>> = HashMap::new();
 
         handlers.insert(ResponseType::LogOnly, Arc::new(LogOnlyHandler));
-        handlers.insert(ResponseType::ContractCall, Arc::new(ContractCallHandler));
+        handlers.insert(
+            ResponseType::ContractCall,
+            Arc::new(ContractCallHandler {
+                network_manager: network_manager.clone(),
+            }),
+        );
         handlers.insert(ResponseType::StoreDb, Arc::new(StoreDbHandler));
         handlers.insert(
             ResponseType::MultiAction,
@@ -57,7 +73,10 @@ impl ResponseHandler {
             }),
         );
 
-        Self { handlers }
+        Self {
+            handlers,
+            _network_manager: network_manager,
+        }
     }
 
     /// Handle a webhook response
@@ -141,13 +160,8 @@ impl Handler for ContractCallHandler {
         monitor: &EventMonitor,
         response: WebhookResponse,
         event: &ProcessedEvent,
-        _context: &EventContext,
+        context: &EventContext,
     ) -> Result<()> {
-        info!(
-            "Contract call handler for monitor '{}' - Phase 2 implementation pending",
-            monitor.name
-        );
-
         if response.action != "contract_call" {
             warn!(
                 "Expected 'contract_call' action but got '{}' for monitor '{}'",
@@ -156,14 +170,245 @@ impl Handler for ContractCallHandler {
             return Ok(());
         }
 
-        if let Some(calls) = response.calls {
-            debug!(
-                "Would execute {} contract calls for event {} at block {}",
+        let calls = response
+            .calls
+            .ok_or_else(|| EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: "No contract calls provided in response".to_string(),
+            })?;
+
+        info!(
+            "Executing {} contract calls for monitor '{}' (event: {} at block {})",
+            calls.len(),
+            monitor.name,
+            event.event_name,
+            event.block_number
+        );
+
+        // Get provider and network config
+        let provider = self
+            .network_manager
+            .get_provider(&context.network)
+            .map_err(|e| EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: format!("Failed to get provider: {e}"),
+            })?;
+
+        let network_config = self
+            .network_manager
+            .get_network(&context.network)
+            .await
+            .map_err(|e| EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: format!("Failed to get network config: {e}"),
+            })?;
+
+        // Get contract call config
+        let call_config = monitor.response.contract_call.as_ref().ok_or_else(|| {
+            EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: "Missing contract call configuration".to_string(),
+            }
+        })?;
+
+        // Execute each call
+        for (i, call) in calls.iter().enumerate() {
+            self.execute_contract_call(
+                monitor,
+                call,
+                i,
                 calls.len(),
-                event.event_name,
-                event.block_number
+                &provider,
+                network_config,
+                call_config,
+                event,
+                context,
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+}
+
+impl ContractCallHandler {
+    /// Execute a single contract call
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_contract_call(
+        &self,
+        monitor: &EventMonitor,
+        call: &ContractCall,
+        index: usize,
+        total: usize,
+        provider: &Arc<EthProvider>,
+        network_config: &crate::config::models::Network,
+        call_config: &crate::event_monitors::models::ContractCallConfig,
+        event: &ProcessedEvent,
+        context: &EventContext,
+    ) -> Result<()> {
+        info!(
+            "Executing contract call {}/{} for monitor '{}': {} on {}",
+            index + 1,
+            total,
+            monitor.name,
+            call.function,
+            call.target
+        );
+
+        // Create metrics context
+        let metrics_ctx = MetricsContext::new(&monitor.name, &context.network);
+
+        // Parse target address
+        let target_address =
+            call.target
+                .parse::<Address>()
+                .map_err(|e| EventMonitorError::HandlerError {
+                    monitor: monitor.name.clone(),
+                    reason: format!("Invalid target address '{}': {}", call.target, e),
+                })?;
+
+        // Encode function call
+        let call_data =
+            AbiDecoder::encode_function_call(&call.function, &call.params, &monitor.name)?;
+
+        // Parse value if provided
+        let value = if call.value.is_empty() || call.value == "0" {
+            U256::ZERO
+        } else {
+            U256::from_str_radix(&call.value, 10).map_err(|e| EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: format!("Invalid value '{}': {}", call.value, e),
+            })?
+        };
+
+        // Record the attempt
+        let recorder = TimedOperationRecorder::contract_write(metrics_ctx.clone());
+
+        // Create transaction context
+        let _tx_context = TransactionContext::EventMonitor {
+            monitor_name: monitor.name.clone(),
+            event_name: event.event_name.clone(),
+            function_name: call.function.clone(),
+        };
+
+        // Log submission
+        let value_str = if value.is_zero() {
+            None
+        } else {
+            Some(value.to_string())
+        };
+        TransactionLogger::log_submission(
+            "event_monitor",
+            &monitor.name,
+            &context.network,
+            value_str.as_deref(),
+        );
+
+        // Build transaction with gas configuration
+        let start_time = Instant::now();
+        let tx_builder = GasAwareTransactionBuilder::new(
+            provider.clone(),
+            target_address,
+            call_data.clone(),
+            network_config.clone(),
+        )
+        .with_value(value);
+
+        // Apply gas limit override from config
+        let tx_builder = if call_config.gas_limit_multiplier > 0.0 {
+            // We'll apply the multiplier after estimation, for now just use builder as-is
+            tx_builder
+        } else {
+            tx_builder
+        };
+
+        // Check gas price against configured maximum
+        if call_config.max_gas_price_gwei > 0 {
+            let current_gas_price =
+                provider
+                    .get_gas_price()
+                    .await
+                    .map_err(|e| EventMonitorError::HandlerError {
+                        monitor: monitor.name.clone(),
+                        reason: format!("Failed to get gas price: {e}"),
+                    })?;
+
+            let max_gas_price_wei =
+                crate::gas::utils::gwei_to_wei(call_config.max_gas_price_gwei as f64);
+            if U256::from(current_gas_price) > max_gas_price_wei {
+                return Err(EventMonitorError::HandlerError {
+                    monitor: monitor.name.clone(),
+                    reason: format!(
+                        "Gas price {} gwei exceeds maximum {} gwei",
+                        crate::gas::utils::wei_to_gwei(U256::from(current_gas_price)),
+                        call_config.max_gas_price_gwei
+                    ),
+                });
+            }
+        }
+
+        // Build and send transaction
+        let tx_request = tx_builder
+            .build()
+            .await
+            .map_err(|e| EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: format!("Failed to build transaction: {e}"),
+            })?;
+
+        let pending_tx = provider.send_transaction(tx_request).await.map_err(|e| {
+            EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: format!("Failed to send transaction: {e}"),
+            }
+        })?;
+
+        let tx_hash = *pending_tx.tx_hash();
+        info!(
+            "Transaction submitted for monitor '{}': 0x{}",
+            monitor.name,
+            hex::encode(tx_hash)
+        );
+
+        // Wait for confirmation
+        let receipt =
+            pending_tx
+                .get_receipt()
+                .await
+                .map_err(|e| EventMonitorError::HandlerError {
+                    monitor: monitor.name.clone(),
+                    reason: format!("Failed to get transaction receipt: {e}"),
+                })?;
+
+        // Record metrics
+        let submission_time = start_time.elapsed();
+        let tx_recorder =
+            TransactionMetricsRecorder::new(metrics_ctx.clone(), &network_config.transaction_type);
+
+        if receipt.status() {
+            let gas_used = receipt.gas_used;
+            // TODO: Get actual gas limit from transaction
+            tx_recorder.record_success(
+                &receipt,
+                U256::from(gas_used),
+                Some(submission_time.as_secs()),
             );
-            // Phase 2: Implement actual contract execution
+            TransactionLogger::log_confirmation(tx_hash, gas_used);
+            recorder.record_success(None);
+
+            info!(
+                "Contract call successful for monitor '{}': {} (gas used: {})",
+                monitor.name, call.function, gas_used
+            );
+        } else {
+            // TODO: Get actual gas limit and price from transaction
+            tx_recorder.record_failure(U256::from(300000), None, "execution_reverted");
+            recorder.record_failure("Transaction reverted");
+
+            return Err(EventMonitorError::HandlerError {
+                monitor: monitor.name.clone(),
+                reason: format!("Transaction reverted: 0x{}", hex::encode(tx_hash)),
+            });
         }
 
         Ok(())
@@ -220,18 +465,18 @@ impl Handler for MultiActionHandler {
     }
 }
 
-impl Default for ResponseHandler {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::event_monitors::models::{ResponseConfig, WebhookConfig};
+    use crate::network::NetworkManager;
     use alloy::primitives::address;
     use std::collections::HashMap;
+
+    async fn create_test_network_manager() -> Arc<NetworkManager> {
+        let networks = vec![];
+        Arc::new(NetworkManager::new(&networks).await.unwrap())
+    }
 
     fn test_monitor(response_type: ResponseType) -> EventMonitor {
         EventMonitor {
@@ -289,7 +534,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_log_only_handler() {
-        let handler = ResponseHandler::new();
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
         let monitor = test_monitor(ResponseType::LogOnly);
         let response = test_response();
         let event = test_event();
@@ -303,7 +549,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handler_registration() {
-        let handler = ResponseHandler::new();
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
 
         // Verify default handlers exist
         assert_eq!(handler.handlers.len(), 4);

@@ -48,10 +48,24 @@ pub struct ContextData {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WebhookResponse {
     pub action: String,
-    pub calls: Option<Vec<serde_json::Value>>,
+    pub calls: Option<Vec<ContractCall>>,
     pub metadata: Option<serde_json::Value>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Contract call data from webhook response
+#[derive(Debug, Clone, Deserialize)]
+pub struct ContractCall {
+    /// Target contract address
+    pub target: String,
+    /// Function signature (e.g., "transfer(address,uint256)")
+    pub function: String,
+    /// Function parameters as JSON values
+    pub params: Vec<serde_json::Value>,
+    /// ETH value to send in wei (optional, defaults to 0)
+    #[serde(default)]
+    pub value: String,
 }
 
 impl WebhookCaller {
