@@ -502,6 +502,7 @@ mod tests {
             networks: vec![Network {
                 name: "test-network".to_string(),
                 rpc_url: "http://localhost:8545".to_string(),
+                ws_url: None,
                 transaction_type: "eip1559".to_string(),
                 gas_config: GasConfig::default(),
                 gas_token: "ethereum".to_string(),
@@ -520,6 +521,7 @@ mod tests {
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
             scheduled_tasks: vec![],
+            event_monitors: vec![],
         }
     }
 

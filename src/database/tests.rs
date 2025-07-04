@@ -165,6 +165,7 @@ mod tests {
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
             scheduled_tasks: vec![],
+            event_monitors: vec![],
         };
 
         assert!(config.database_cleanup.enabled);
@@ -206,6 +207,7 @@ mod tests {
             metrics: MetricsConfig::default(),
             gas_price_feeds: GasPriceFeedConfig::default(),
             scheduled_tasks: vec![],
+            event_monitors: vec![],
         };
 
         // Mock repository for testing

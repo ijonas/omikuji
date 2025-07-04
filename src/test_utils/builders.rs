@@ -20,7 +20,7 @@ impl NetworkBuilder {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            rpc_url: format!("http://localhost:8545/{}", name),
+            rpc_url: format!("http://localhost:8545/{name}"),
             transaction_type: "eip1559".to_string(),
             gas_config: GasConfig::default(),
             gas_token: "ethereum".to_string(),
@@ -58,6 +58,7 @@ impl NetworkBuilder {
         Network {
             name: self.name,
             rpc_url: self.rpc_url,
+            ws_url: None,
             transaction_type: self.transaction_type,
             gas_config: self.gas_config,
             gas_token: self.gas_token,
@@ -156,6 +157,7 @@ impl ConfigBuilder {
             metrics: self.metrics,
             gas_price_feeds: self.gas_price_feeds,
             scheduled_tasks: self.scheduled_tasks,
+            event_monitors: vec![],
         }
     }
 
