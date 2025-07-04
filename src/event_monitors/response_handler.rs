@@ -469,6 +469,7 @@ impl Handler for MultiActionHandler {
 mod tests {
     use super::*;
     use crate::event_monitors::models::{ResponseConfig, WebhookConfig};
+    use crate::event_monitors::webhook_caller::ContractCall;
     use crate::network::NetworkManager;
     use alloy::primitives::address;
     use std::collections::HashMap;
@@ -550,7 +551,7 @@ mod tests {
     #[tokio::test]
     async fn test_handler_registration() {
         let network_manager = create_test_network_manager().await;
-        let handler = ResponseHandler::new(network_manager);
+        let mut handler = ResponseHandler::new(network_manager);
 
         // Verify default handlers exist
         assert_eq!(handler.handlers.len(), 4);
@@ -558,5 +559,154 @@ mod tests {
         assert!(handler.handlers.contains_key(&ResponseType::ContractCall));
         assert!(handler.handlers.contains_key(&ResponseType::StoreDb));
         assert!(handler.handlers.contains_key(&ResponseType::MultiAction));
+
+        // Test registering a custom handler
+        struct CustomHandler;
+        #[async_trait]
+        impl Handler for CustomHandler {
+            async fn handle(
+                &self,
+                _monitor: &EventMonitor,
+                _response: WebhookResponse,
+                _event: &ProcessedEvent,
+                _context: &EventContext,
+            ) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        handler.register_handler(ResponseType::LogOnly, Arc::new(CustomHandler));
+        // Should still have 4 handlers (replaced LogOnly)
+        assert_eq!(handler.handlers.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn test_handle_response_with_unknown_type() {
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
+        let monitor = test_monitor(ResponseType::LogOnly);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        // Clear handlers to test missing handler error
+        let mut handler_mut = handler;
+        handler_mut.handlers.clear();
+
+        let result = handler_mut
+            .handle_response(&monitor, response, &event, &context)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No handler found for response type"));
+    }
+
+    #[tokio::test]
+    async fn test_store_db_handler() {
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
+        let monitor = test_monitor(ResponseType::StoreDb);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        // StoreDbHandler currently just logs, so it should succeed
+        let result = handler
+            .handle_response(&monitor, response, &event, &context)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_multi_action_handler() {
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
+        let monitor = test_monitor(ResponseType::MultiAction);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        // MultiActionHandler should execute multiple handlers
+        let result = handler
+            .handle_response(&monitor, response, &event, &context)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_contract_call_handler_wrong_action() {
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
+        let monitor = test_monitor(ResponseType::ContractCall);
+        let mut response = test_response();
+        response.action = "wrong_action".to_string();
+        let event = test_event();
+        let context = test_context();
+
+        // Should succeed but log warning
+        let result = handler
+            .handle_response(&monitor, response, &event, &context)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_contract_call_handler_no_calls() {
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
+        let monitor = test_monitor(ResponseType::ContractCall);
+        let mut response = test_response();
+        response.action = "contract_call".to_string();
+        response.calls = None;
+        let event = test_event();
+        let context = test_context();
+
+        // Should fail with no calls provided
+        let result = handler
+            .handle_response(&monitor, response, &event, &context)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No contract calls provided"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_response_metrics() {
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
+        let monitor = test_monitor(ResponseType::LogOnly);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        // Test that metrics are recorded (should succeed)
+        let result = handler
+            .handle_response(&monitor, response, &event, &context)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    fn test_contract_call() -> ContractCall {
+        ContractCall {
+            target: "0x1234567890123456789012345678901234567890".to_string(),
+            function: "transfer(address,uint256)".to_string(),
+            params: vec![
+                serde_json::json!("0x2345678901234567890123456789012345678901"),
+                serde_json::json!("1000000"),
+            ],
+            value: "0".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_contract_call_serialization() {
+        let call = test_contract_call();
+        let json = serde_json::to_string(&call).unwrap();
+        assert!(json.contains("transfer(address,uint256)"));
+        assert!(json.contains("0x1234567890123456789012345678901234567890"));
     }
 }

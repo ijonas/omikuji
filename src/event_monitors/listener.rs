@@ -365,6 +365,29 @@ mod tests {
         }
     }
 
+    fn test_event() -> ProcessedEvent {
+        ProcessedEvent {
+            monitor_name: "test_monitor".to_string(),
+            event_name: "TestEvent".to_string(),
+            contract_address: address!("1234567890123456789012345678901234567890"),
+            transaction_hash: "0xabcd".to_string(),
+            block_number: 12345,
+            log_index: 0,
+            removed: false,
+            topics: vec![],
+            data: "0x".to_string(),
+            decoded_args: serde_json::json!({}),
+        }
+    }
+
+    fn test_context() -> EventContext {
+        EventContext {
+            network: "ethereum-mainnet".to_string(),
+            timestamp: chrono::Utc::now(),
+            omikuji_version: "0.1.0".to_string(),
+        }
+    }
+
     #[test]
     fn test_group_monitors_by_network() {
         let mut monitor1 = test_monitor();
@@ -405,5 +428,141 @@ mod tests {
     fn test_parse_event_selector() {
         let selector = EventListener::parse_event_selector("Transfer(address,address,uint256)");
         assert!(selector.is_ok());
+    }
+
+    #[test]
+    fn test_decode_event_data() {
+        use alloy::primitives::{b256, B256};
+        use alloy::rpc::types::Log as AlloyLog;
+
+        let monitor = test_monitor();
+        let log = AlloyLog {
+            inner: alloy::primitives::Log {
+                address: monitor.contract_address,
+                data: alloy::primitives::LogData::new_unchecked(
+                    vec![b256!(
+                        "0000000000000000000000000000000000000000000000000000000000000001"
+                    )],
+                    vec![0x00, 0x00, 0x00, 0x01].into(),
+                ),
+            },
+            block_hash: Some(B256::ZERO),
+            block_number: Some(12345),
+            block_timestamp: None,
+            transaction_hash: Some(b256!(
+                "0000000000000000000000000000000000000000000000000000000000000002"
+            )),
+            transaction_index: Some(0),
+            log_index: Some(0),
+            removed: false,
+        };
+
+        let result = EventListener::decode_event_data(&log, &monitor);
+        assert!(result.is_ok());
+
+        let event = result.unwrap();
+        assert_eq!(event.monitor_name, "test_monitor");
+        assert_eq!(event.event_name, "Transfer");
+        assert_eq!(event.block_number, 12345);
+        assert!(!event.removed);
+        assert_eq!(event.topics.len(), 1);
+        assert_eq!(event.data, "0x00000001");
+    }
+
+    #[test]
+    fn test_event_context_creation() {
+        let context = test_context();
+        assert_eq!(context.network, "ethereum-mainnet");
+        assert_eq!(context.omikuji_version, "0.1.0");
+        assert!(context.timestamp <= chrono::Utc::now());
+    }
+
+    #[test]
+    fn test_processed_event_fields() {
+        let event = test_event();
+        assert_eq!(event.monitor_name, "test_monitor");
+        assert_eq!(event.event_name, "TestEvent");
+        assert_eq!(event.block_number, 12345);
+        assert_eq!(event.log_index, 0);
+        assert!(!event.removed);
+        assert!(event.topics.is_empty());
+        assert_eq!(event.data, "0x");
+    }
+
+    #[tokio::test]
+    async fn test_event_listener_creation() {
+        let networks: Vec<crate::config::models::Network> = vec![];
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager.clone()));
+        let monitors = vec![test_monitor()];
+
+        let listener = EventListener::new(
+            network_manager,
+            webhook_caller,
+            response_handler,
+            monitors.clone(),
+        );
+
+        // Verify monitors are stored
+        let grouped = listener.group_monitors_by_network();
+        assert_eq!(grouped.len(), 1);
+        assert!(grouped.contains_key("ethereum-mainnet"));
+    }
+
+    #[test]
+    fn test_multiple_monitors_grouping() {
+        let mut monitor1 = test_monitor();
+        monitor1.name = "monitor1".to_string();
+        monitor1.network = "ethereum-mainnet".to_string();
+
+        let mut monitor2 = test_monitor();
+        monitor2.name = "monitor2".to_string();
+        monitor2.network = "base-mainnet".to_string();
+
+        let mut monitor3 = test_monitor();
+        monitor3.name = "monitor3".to_string();
+        monitor3.network = "ethereum-mainnet".to_string();
+
+        let mut monitor4 = test_monitor();
+        monitor4.name = "monitor4".to_string();
+        monitor4.network = "arbitrum-mainnet".to_string();
+
+        let networks: Vec<crate::config::models::Network> = vec![];
+        let network_manager = Arc::new(
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(NetworkManager::new(&networks))
+                .unwrap(),
+        );
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager.clone()));
+
+        let listener = EventListener::new(
+            network_manager,
+            webhook_caller,
+            response_handler,
+            vec![monitor1, monitor2, monitor3, monitor4],
+        );
+
+        let grouped = listener.group_monitors_by_network();
+        assert_eq!(grouped.len(), 3);
+        assert_eq!(grouped.get("ethereum-mainnet").unwrap().len(), 2);
+        assert_eq!(grouped.get("base-mainnet").unwrap().len(), 1);
+        assert_eq!(grouped.get("arbitrum-mainnet").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_event_signature_parsing() {
+        // Test valid signatures
+        assert!(EventListener::parse_event_selector("Transfer(address,address,uint256)").is_ok());
+        assert!(EventListener::parse_event_selector("Approval(address,address,uint256)").is_ok());
+        assert!(
+            EventListener::parse_event_selector("Swap(uint256,uint256,address,address)").is_ok()
+        );
+        assert!(EventListener::parse_event_selector("SimpleEvent()").is_ok());
+        assert!(
+            EventListener::parse_event_selector("ComplexEvent(address[],uint256[],bytes)").is_ok()
+        );
     }
 }

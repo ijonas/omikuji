@@ -55,7 +55,7 @@ pub struct WebhookResponse {
 }
 
 /// Contract call data from webhook response
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractCall {
     /// Target contract address
     pub target: String,
@@ -306,5 +306,160 @@ mod tests {
         let _caller = WebhookCaller::new();
         // Just verify it can be created without panicking
         assert!(true);
+    }
+
+    #[test]
+    fn test_webhook_payload_serialization() {
+        let caller = WebhookCaller::new();
+        let event = test_event();
+        let context = test_context();
+        let payload = caller.create_payload(&event, &context);
+
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("test_monitor"));
+        assert!(json.contains("Transfer"));
+        assert!(json.contains("ethereum-mainnet"));
+        assert!(json.contains("0x1234567890123456789012345678901234567890"));
+    }
+
+    #[test]
+    fn test_webhook_response_deserialization() {
+        // Test basic response
+        let json = r#"{"action": "log_only"}"#;
+        let response: WebhookResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.action, "log_only");
+        assert!(response.calls.is_none());
+
+        // Test response with contract calls
+        let json = r#"{
+            "action": "contract_call",
+            "calls": [{
+                "target": "0x1234567890123456789012345678901234567890",
+                "function": "transfer(address,uint256)",
+                "params": ["0x2345678901234567890123456789012345678901", "1000000"],
+                "value": "0"
+            }]
+        }"#;
+        let response: WebhookResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.action, "contract_call");
+        assert!(response.calls.is_some());
+        assert_eq!(response.calls.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_webhook_config_validation_errors() {
+        let mut config = test_webhook_config();
+
+        // Test invalid timeout
+        config.timeout_seconds = 0;
+        assert!(config.validate().is_err());
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("timeout must be greater than 0"));
+
+        // Test invalid retry delay
+        config.timeout_seconds = 30;
+        config.retry_attempts = 3;
+        config.retry_delay_seconds = 0;
+        assert!(config.validate().is_err());
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("Retry delay must be greater than 0"));
+    }
+
+    #[test]
+    fn test_http_method_serialization() {
+        assert_eq!(serde_json::to_string(&HttpMethod::Get).unwrap(), "\"GET\"");
+        assert_eq!(
+            serde_json::to_string(&HttpMethod::Post).unwrap(),
+            "\"POST\""
+        );
+        assert_eq!(serde_json::to_string(&HttpMethod::Put).unwrap(), "\"PUT\"");
+        assert_eq!(
+            serde_json::to_string(&HttpMethod::Delete).unwrap(),
+            "\"DELETE\""
+        );
+    }
+
+    #[tokio::test]
+    async fn test_webhook_caller_default() {
+        let caller1 = WebhookCaller::new();
+        let caller2 = WebhookCaller::default();
+
+        // Both should create valid instances
+        let event = test_event();
+        let context = test_context();
+        let payload1 = caller1.create_payload(&event, &context);
+        let payload2 = caller2.create_payload(&event, &context);
+
+        assert_eq!(payload1.event.name, payload2.event.name);
+    }
+
+    #[test]
+    fn test_contract_call_structure() {
+        let call = ContractCall {
+            target: "0x1234567890123456789012345678901234567890".to_string(),
+            function: "approve(address,uint256)".to_string(),
+            params: vec![
+                serde_json::json!("0x2345678901234567890123456789012345678901"),
+                serde_json::json!("1000000000000000000"),
+            ],
+            value: "0".to_string(),
+        };
+
+        let json = serde_json::to_string(&call).unwrap();
+        let deserialized: ContractCall = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.target, call.target);
+        assert_eq!(deserialized.function, call.function);
+        assert_eq!(deserialized.params.len(), 2);
+        assert_eq!(deserialized.value, "0");
+    }
+
+    #[test]
+    fn test_webhook_response_with_metadata() {
+        let json = r#"{
+            "action": "log_only",
+            "metadata": {
+                "processed": true,
+                "timestamp": 1234567890,
+                "custom_field": "test_value"
+            }
+        }"#;
+
+        let response: WebhookResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.action, "log_only");
+        assert!(response.metadata.is_some());
+
+        let metadata = response.metadata.unwrap();
+        assert_eq!(metadata["processed"], true);
+        assert_eq!(metadata["timestamp"], 1234567890);
+        assert_eq!(metadata["custom_field"], "test_value");
+    }
+
+    #[test]
+    fn test_webhook_response_clone() {
+        let mut response = WebhookResponse {
+            action: "test_action".to_string(),
+            calls: Some(vec![ContractCall {
+                target: "0x123".to_string(),
+                function: "test()".to_string(),
+                params: vec![],
+                value: "0".to_string(),
+            }]),
+            metadata: Some(serde_json::json!({"key": "value"})),
+            extra: serde_json::Map::new(),
+        };
+        response
+            .extra
+            .insert("extra_key".to_string(), serde_json::json!("extra_value"));
+
+        let cloned = response.clone();
+        assert_eq!(cloned.action, response.action);
+        assert_eq!(cloned.calls.as_ref().unwrap().len(), 1);
+        assert_eq!(cloned.metadata, response.metadata);
+        assert_eq!(cloned.extra["extra_key"], "extra_value");
     }
 }
