@@ -312,4 +312,309 @@ mod tests {
             "Bearer token"
         );
     }
+
+    #[test]
+    fn test_webhook_method_setter() {
+        // Test setting webhook method (covers lines 85-88)
+        let monitor = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .webhook_method(HttpMethod::Get)
+            .build()
+            .unwrap();
+
+        assert_eq!(monitor.webhook.method, HttpMethod::Get);
+
+        // Test with PUT method
+        let monitor_put = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .webhook_method(HttpMethod::Put)
+            .build()
+            .unwrap();
+
+        assert_eq!(monitor_put.webhook.method, HttpMethod::Put);
+    }
+
+    #[test]
+    fn test_webhook_headers_setter() {
+        // Test setting webhook headers with HashMap (covers lines 97-100)
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+        headers.insert("X-API-Key".to_string(), "secret".to_string());
+
+        let monitor = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .webhook_headers(headers.clone())
+            .build()
+            .unwrap();
+
+        assert_eq!(monitor.webhook.headers, headers);
+    }
+
+    #[test]
+    fn test_webhook_configuration_setters() {
+        // Test webhook timeout, retries, and retry delay setters (covers lines 103-118)
+        let monitor = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .webhook_timeout(60)
+            .webhook_retries(5)
+            .webhook_retry_delay(10)
+            .build()
+            .unwrap();
+
+        assert_eq!(monitor.webhook.timeout_seconds, 60);
+        assert_eq!(monitor.webhook.retry_attempts, 5);
+        assert_eq!(monitor.webhook.retry_delay_seconds, 10);
+    }
+
+    #[test]
+    fn test_response_type_setter() {
+        // Test response type setter (covers lines 121-124)
+        let monitor = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .response_type(ResponseType::StoreDb)
+            .build()
+            .unwrap();
+
+        assert_eq!(monitor.response.response_type, ResponseType::StoreDb);
+
+        // Test with MultiAction type
+        let monitor_multi = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .response_type(ResponseType::MultiAction)
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            monitor_multi.response.response_type,
+            ResponseType::MultiAction
+        );
+    }
+
+    #[test]
+    fn test_validation_with_custom_age() {
+        // Test validation setter with custom parameters (covers lines 149-161)
+        let signers = vec![
+            address!("1234567890123456789012345678901234567890"),
+            address!("abcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+        ];
+
+        let monitor = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .validation(true, signers.clone(), 600)
+            .build()
+            .unwrap();
+
+        let validation = monitor.response.validation.unwrap();
+        assert!(validation.require_signature);
+        assert_eq!(validation.allowed_signers, signers);
+        assert_eq!(validation.max_response_age_seconds, 600);
+
+        // Test with signature not required
+        let monitor_no_sig = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .validation(false, vec![], 120)
+            .build()
+            .unwrap();
+
+        let validation_no_sig = monitor_no_sig.response.validation.unwrap();
+        assert!(!validation_no_sig.require_signature);
+        assert!(validation_no_sig.allowed_signers.is_empty());
+        assert_eq!(validation_no_sig.max_response_age_seconds, 120);
+    }
+
+    #[test]
+    fn test_builder_missing_network() {
+        // Test error when network is missing (covers lines 171-173)
+        let result = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Network is required"));
+        assert!(err.to_string().contains("test_monitor"));
+    }
+
+    #[test]
+    fn test_builder_missing_contract_address() {
+        // Test error when contract address is missing (covers lines 178-180)
+        let result = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("https://example.com/webhook")
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Contract address is required"));
+        assert!(err.to_string().contains("test_monitor"));
+    }
+
+    #[test]
+    fn test_builder_missing_event_signature() {
+        // Test error when event signature is missing (covers lines 185-187)
+        let result = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .webhook_url("https://example.com/webhook")
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Event signature is required"));
+        assert!(err.to_string().contains("test_monitor"));
+    }
+
+    #[test]
+    fn test_builder_missing_webhook_url() {
+        // Test error when webhook URL is missing (covers lines 192-194)
+        let result = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Webhook URL is required"));
+        assert!(err.to_string().contains("test_monitor"));
+    }
+
+    #[test]
+    fn test_builder_validation_error() {
+        // Test validation error propagation (covers lines 224-226)
+        // Create a monitor with invalid event signature format
+        let result = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("InvalidEventFormat") // Missing parentheses
+            .webhook_url("https://example.com/webhook")
+            .build();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Invalid event signature format"));
+        assert!(err.to_string().contains("test_monitor"));
+
+        // Test with empty webhook URL that passes builder but fails validation
+        let result2 = EventMonitorBuilder::new()
+            .name("test_monitor")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("Transfer(address,address,uint256)")
+            .webhook_url("invalid-url") // Invalid URL format
+            .build();
+
+        assert!(result2.is_err());
+        let err2 = result2.unwrap_err();
+        assert!(err2
+            .to_string()
+            .contains("Webhook URL must start with http://"));
+    }
+
+    #[test]
+    fn test_builder_complex_scenario() {
+        // Test a complex scenario with all setters used together
+        let mut headers = HashMap::new();
+        headers.insert(
+            "Authorization".to_string(),
+            "Bearer complex-token".to_string(),
+        );
+
+        let signers = vec![address!("1111111111111111111111111111111111111111")];
+
+        let monitor = EventMonitorBuilder::new()
+            .name("complex_monitor")
+            .network("base-mainnet")
+            .contract_address(address!("2222222222222222222222222222222222222222"))
+            .event_signature("ComplexEvent(address,uint256,bytes)")
+            .webhook_url("https://complex.example.com/webhook")
+            .webhook_method(HttpMethod::Patch)
+            .webhook_headers(headers.clone())
+            .webhook_header("X-Extra", "value") // Add extra header
+            .webhook_timeout(120)
+            .webhook_retries(10)
+            .webhook_retry_delay(15)
+            .response_type(ResponseType::ContractCall)
+            .contract_call("0x3333", 200)
+            .validation(true, signers.clone(), 900)
+            .build()
+            .unwrap();
+
+        // Verify all settings
+        assert_eq!(monitor.name, "complex_monitor");
+        assert_eq!(monitor.network, "base-mainnet");
+        assert_eq!(monitor.webhook.method, HttpMethod::Patch);
+        assert_eq!(monitor.webhook.timeout_seconds, 120);
+        assert_eq!(monitor.webhook.retry_attempts, 10);
+        assert_eq!(monitor.webhook.retry_delay_seconds, 15);
+        assert_eq!(monitor.webhook.headers.len(), 2); // Original + extra
+        assert_eq!(monitor.response.response_type, ResponseType::ContractCall);
+        assert!(monitor.response.contract_call.is_some());
+        assert!(monitor.response.validation.is_some());
+
+        let validation = monitor.response.validation.unwrap();
+        assert_eq!(validation.max_response_age_seconds, 900);
+    }
+
+    #[test]
+    fn test_builder_defaults() {
+        // Test that default values are correctly applied
+        let monitor = EventMonitorBuilder::new()
+            .name("default_test")
+            .network("ethereum-mainnet")
+            .contract_address(address!("1234567890123456789012345678901234567890"))
+            .event_signature("DefaultEvent()")
+            .webhook_url("https://example.com")
+            .build()
+            .unwrap();
+
+        // Check default values
+        assert_eq!(monitor.webhook.method, HttpMethod::Post);
+        assert_eq!(monitor.webhook.timeout_seconds, 30);
+        assert_eq!(monitor.webhook.retry_attempts, 3);
+        assert_eq!(monitor.webhook.retry_delay_seconds, 5);
+        assert_eq!(monitor.response.response_type, ResponseType::LogOnly);
+        assert!(monitor.response.contract_call.is_none());
+        assert!(monitor.response.validation.is_none());
+    }
 }

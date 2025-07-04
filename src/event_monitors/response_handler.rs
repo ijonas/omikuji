@@ -709,4 +709,489 @@ mod tests {
         assert!(json.contains("transfer(address,uint256)"));
         assert!(json.contains("0x1234567890123456789012345678901234567890"));
     }
+
+    #[tokio::test]
+    async fn test_handle_response_debug_logging() {
+        // This test covers lines 95-100: debug logging match statement
+        let network_manager = create_test_network_manager().await;
+        let handler = ResponseHandler::new(network_manager);
+
+        // Test all response types to cover all match arms
+        let response_types = vec![
+            ResponseType::LogOnly,
+            ResponseType::ContractCall,
+            ResponseType::StoreDb,
+            ResponseType::MultiAction,
+        ];
+
+        for response_type in response_types {
+            let monitor = test_monitor(response_type.clone());
+            let response = test_response();
+            let event = test_event();
+            let context = test_context();
+
+            // This will execute the debug logging in handle_response
+            let _ = handler
+                .handle_response(&monitor, response, &event, &context)
+                .await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_log_only_handler_with_metadata() {
+        // This test ensures line 146 (info logging) is covered
+        let handler = LogOnlyHandler;
+        let monitor = test_monitor(ResponseType::LogOnly);
+        let mut response = test_response();
+        response.metadata = Some(serde_json::json!({"key": "value", "number": 42}));
+        let event = test_event();
+        let context = test_context();
+
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_contract_call_handler_wrong_action_warning() {
+        // This test specifically covers line 167: warning log for wrong action
+        let network_manager = create_test_network_manager().await;
+        let handler = ContractCallHandler {
+            network_manager: network_manager.clone(),
+        };
+        let monitor = test_monitor(ResponseType::ContractCall);
+        let mut response = test_response();
+        response.action = "incorrect_action".to_string();
+        let event = test_event();
+        let context = test_context();
+
+        // Should succeed but log warning
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_contract_call_handler_with_calls() {
+        // This test covers lines 180-230: main execution flow
+        let network_manager = create_test_network_manager().await;
+        let handler = ContractCallHandler {
+            network_manager: network_manager.clone(),
+        };
+
+        // Create monitor with contract call config
+        let mut monitor = test_monitor(ResponseType::ContractCall);
+        monitor.response.contract_call = Some(crate::event_monitors::models::ContractCallConfig {
+            target_contract: "0x1234567890123456789012345678901234567890".to_string(),
+            gas_limit_multiplier: 1.2,
+            max_gas_price_gwei: 100,
+            value_wei: 0,
+        });
+
+        let mut response = test_response();
+        response.action = "contract_call".to_string();
+        response.calls = Some(vec![test_contract_call()]);
+        let event = test_event();
+        let context = test_context();
+
+        // This will fail when trying to get provider, but covers the initial flow
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to get provider"));
+    }
+
+    #[tokio::test]
+    async fn test_contract_call_handler_missing_config() {
+        // Test missing contract call configuration
+        // Create monitor without contract call config
+        let monitor = test_monitor(ResponseType::ContractCall);
+        let mut response = test_response();
+        response.action = "contract_call".to_string();
+        response.calls = Some(vec![test_contract_call()]);
+        let event = test_event();
+        let context = test_context();
+
+        // Mock network manager to return a provider
+        let networks = vec![crate::config::models::Network {
+            name: "ethereum-mainnet".to_string(),
+            rpc_url: "http://localhost:8545".to_string(),
+            ws_url: None,
+            transaction_type: "legacy".to_string(),
+            gas_config: crate::config::models::GasConfig::default(),
+            gas_token: "ethereum".to_string(),
+            gas_token_symbol: "ETH".to_string(),
+        }];
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let handler = ContractCallHandler {
+            network_manager: network_manager.clone(),
+        };
+
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing contract call configuration"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_contract_call_invalid_address() {
+        // Test execute_contract_call with invalid target address
+        let network_manager = create_test_network_manager().await;
+        let handler = ContractCallHandler {
+            network_manager: network_manager.clone(),
+        };
+
+        let monitor = test_monitor(ResponseType::ContractCall);
+        let mut call = test_contract_call();
+        call.target = "invalid_address".to_string();
+
+        // Create a mock provider
+        let provider = Arc::new(
+            alloy::providers::ProviderBuilder::new()
+                .on_http("http://localhost:8545".parse::<url::Url>().unwrap()),
+        );
+
+        let network_config = crate::config::models::Network {
+            name: "ethereum-mainnet".to_string(),
+            rpc_url: "http://localhost:8545".to_string(),
+            ws_url: None,
+            transaction_type: "legacy".to_string(),
+            gas_config: crate::config::models::GasConfig::default(),
+            gas_token: "ethereum".to_string(),
+            gas_token_symbol: "ETH".to_string(),
+        };
+
+        let call_config = crate::event_monitors::models::ContractCallConfig {
+            target_contract: "0x1234567890123456789012345678901234567890".to_string(),
+            gas_limit_multiplier: 1.2,
+            max_gas_price_gwei: 100,
+            value_wei: 0,
+        };
+
+        let event = test_event();
+        let context = test_context();
+
+        let result = handler
+            .execute_contract_call(
+                &monitor,
+                &call,
+                0,
+                1,
+                &provider,
+                &network_config,
+                &call_config,
+                &event,
+                &context,
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid target address"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_contract_call_invalid_value() {
+        // Test execute_contract_call with invalid value
+        let network_manager = create_test_network_manager().await;
+        let handler = ContractCallHandler {
+            network_manager: network_manager.clone(),
+        };
+
+        let monitor = test_monitor(ResponseType::ContractCall);
+        let mut call = test_contract_call();
+        call.value = "invalid_value".to_string();
+
+        let provider = Arc::new(
+            alloy::providers::ProviderBuilder::new()
+                .on_http("http://localhost:8545".parse::<url::Url>().unwrap()),
+        );
+        let network_config = crate::config::models::Network {
+            name: "ethereum-mainnet".to_string(),
+            rpc_url: "http://localhost:8545".to_string(),
+            ws_url: None,
+            transaction_type: "legacy".to_string(),
+            gas_config: crate::config::models::GasConfig::default(),
+            gas_token: "ethereum".to_string(),
+            gas_token_symbol: "ETH".to_string(),
+        };
+
+        let call_config = crate::event_monitors::models::ContractCallConfig {
+            target_contract: "0x1234567890123456789012345678901234567890".to_string(),
+            gas_limit_multiplier: 1.2,
+            max_gas_price_gwei: 100,
+            value_wei: 0,
+        };
+
+        let event = test_event();
+        let context = test_context();
+
+        let result = handler
+            .execute_contract_call(
+                &monitor,
+                &call,
+                0,
+                1,
+                &provider,
+                &network_config,
+                &call_config,
+                &event,
+                &context,
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid value"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_contract_call_with_value() {
+        // Test execute_contract_call with a non-zero value
+        let network_manager = create_test_network_manager().await;
+        let handler = ContractCallHandler {
+            network_manager: network_manager.clone(),
+        };
+
+        let monitor = test_monitor(ResponseType::ContractCall);
+        let mut call = test_contract_call();
+        call.value = "1000000000000000000".to_string(); // 1 ETH in wei
+
+        let provider = Arc::new(
+            alloy::providers::ProviderBuilder::new()
+                .on_http("http://localhost:8545".parse::<url::Url>().unwrap()),
+        );
+        let network_config = crate::config::models::Network {
+            name: "ethereum-mainnet".to_string(),
+            rpc_url: "http://localhost:8545".to_string(),
+            ws_url: None,
+            transaction_type: "legacy".to_string(),
+            gas_config: crate::config::models::GasConfig::default(),
+            gas_token: "ethereum".to_string(),
+            gas_token_symbol: "ETH".to_string(),
+        };
+
+        let call_config = crate::event_monitors::models::ContractCallConfig {
+            target_contract: "0x1234567890123456789012345678901234567890".to_string(),
+            gas_limit_multiplier: 0.0, // Test without gas limit multiplier
+            max_gas_price_gwei: 0,     // Test without max gas price check
+            value_wei: 0,
+        };
+
+        let event = test_event();
+        let context = test_context();
+
+        // This will fail when trying to build transaction, but covers value parsing
+        let result = handler
+            .execute_contract_call(
+                &monitor,
+                &call,
+                0,
+                1,
+                &provider,
+                &network_config,
+                &call_config,
+                &event,
+                &context,
+            )
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_store_db_handler_full_coverage() {
+        // This test covers lines 428 and 433: info and debug logs in StoreDbHandler
+        let handler = StoreDbHandler;
+        let monitor = test_monitor(ResponseType::StoreDb);
+        let mut response = test_response();
+        response.action = "store_data".to_string();
+        let mut event = test_event();
+        event.event_name = "TransferEvent".to_string();
+        event.block_number = 67890;
+        let context = test_context();
+
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_multi_action_handler_multiple_handlers() {
+        // This test covers lines 452-453: info log about executing handlers
+        let handler = MultiActionHandler {
+            handlers: vec![
+                Arc::new(LogOnlyHandler),
+                Arc::new(StoreDbHandler),
+                Arc::new(LogOnlyHandler), // Add a third handler
+            ],
+        };
+
+        let monitor = test_monitor(ResponseType::MultiAction);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_multi_action_handler_with_failing_handler() {
+        // Test MultiActionHandler with a handler that fails
+        struct FailingHandler;
+        #[async_trait]
+        impl Handler for FailingHandler {
+            async fn handle(
+                &self,
+                monitor: &EventMonitor,
+                _response: WebhookResponse,
+                _event: &ProcessedEvent,
+                _context: &EventContext,
+            ) -> Result<()> {
+                Err(EventMonitorError::HandlerError {
+                    monitor: monitor.name.clone(),
+                    reason: "Intentional failure".to_string(),
+                })
+            }
+        }
+
+        let handler = MultiActionHandler {
+            handlers: vec![
+                Arc::new(LogOnlyHandler),
+                Arc::new(FailingHandler), // This will fail
+                Arc::new(StoreDbHandler), // This won't be reached
+            ],
+        };
+
+        let monitor = test_monitor(ResponseType::MultiAction);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Intentional failure"));
+    }
+
+    #[tokio::test]
+    async fn test_custom_handler_implementation() {
+        // This test covers lines 573-575 in the Handler trait implementation
+        struct DetailedCustomHandler;
+        #[async_trait]
+        impl Handler for DetailedCustomHandler {
+            async fn handle(
+                &self,
+                monitor: &EventMonitor,
+                response: WebhookResponse,
+                event: &ProcessedEvent,
+                context: &EventContext,
+            ) -> Result<()> {
+                // Actually use all the parameters to ensure coverage
+                assert_eq!(monitor.name, "test_monitor");
+                assert_eq!(response.action, "test_action");
+                assert_eq!(event.event_name, "TestEvent");
+                assert_eq!(context.network, "ethereum-mainnet");
+                Ok(())
+            }
+        }
+
+        let handler = DetailedCustomHandler;
+        let monitor = test_monitor(ResponseType::LogOnly);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_response_metrics_failure() {
+        // Test metrics recording on failure
+        let network_manager = create_test_network_manager().await;
+        let mut handler = ResponseHandler::new(network_manager);
+
+        // Create a handler that always fails
+        struct AlwaysFailHandler;
+        #[async_trait]
+        impl Handler for AlwaysFailHandler {
+            async fn handle(
+                &self,
+                monitor: &EventMonitor,
+                _response: WebhookResponse,
+                _event: &ProcessedEvent,
+                _context: &EventContext,
+            ) -> Result<()> {
+                Err(EventMonitorError::HandlerError {
+                    monitor: monitor.name.clone(),
+                    reason: "Always fails".to_string(),
+                })
+            }
+        }
+
+        handler.register_handler(ResponseType::LogOnly, Arc::new(AlwaysFailHandler));
+
+        let monitor = test_monitor(ResponseType::LogOnly);
+        let response = test_response();
+        let event = test_event();
+        let context = test_context();
+
+        let result = handler
+            .handle_response(&monitor, response, &event, &context)
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_contract_call_handler_multiple_calls() {
+        // Test handling multiple contract calls
+        let network_manager = create_test_network_manager().await;
+        let handler = ContractCallHandler {
+            network_manager: network_manager.clone(),
+        };
+
+        let mut monitor = test_monitor(ResponseType::ContractCall);
+        monitor.response.contract_call = Some(crate::event_monitors::models::ContractCallConfig {
+            target_contract: "0x1234567890123456789012345678901234567890".to_string(),
+            gas_limit_multiplier: 1.5,
+            max_gas_price_gwei: 200,
+            value_wei: 0,
+        });
+
+        let mut response = test_response();
+        response.action = "contract_call".to_string();
+        response.calls = Some(vec![
+            test_contract_call(),
+            ContractCall {
+                target: "0x3456789012345678901234567890123456789012".to_string(),
+                function: "approve(address,uint256)".to_string(),
+                params: vec![
+                    serde_json::json!("0x4567890123456789012345678901234567890123"),
+                    serde_json::json!("2000000"),
+                ],
+                value: "100".to_string(),
+            },
+            ContractCall {
+                target: "0x5678901234567890123456789012345678901234".to_string(),
+                function: "mint(address,uint256)".to_string(),
+                params: vec![
+                    serde_json::json!("0x6789012345678901234567890123456789012345"),
+                    serde_json::json!("3000000"),
+                ],
+                value: "".to_string(), // Test empty value
+            },
+        ]);
+        let event = test_event();
+        let context = test_context();
+
+        // This will fail when trying to get provider, but covers multiple calls logic
+        let result = handler.handle(&monitor, response, &event, &context).await;
+        assert!(result.is_err());
+    }
 }

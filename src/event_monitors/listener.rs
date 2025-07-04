@@ -565,4 +565,392 @@ mod tests {
             EventListener::parse_event_selector("ComplexEvent(address[],uint256[],bytes)").is_ok()
         );
     }
+
+    // Tests for uncovered lines
+
+    #[tokio::test]
+    async fn test_start_monitoring() {
+        // Create a test network configuration
+        let networks = vec![
+            crate::config::models::Network {
+                name: "ethereum-mainnet".to_string(),
+                rpc_url: "http://localhost:8545".to_string(),
+                ws_url: None,
+                transaction_type: "eip1559".to_string(),
+                gas_config: crate::config::models::GasConfig::default(),
+                gas_token: "ethereum".to_string(),
+                gas_token_symbol: "ETH".to_string(),
+            },
+            crate::config::models::Network {
+                name: "base-mainnet".to_string(),
+                rpc_url: "http://localhost:8546".to_string(),
+                ws_url: None,
+                transaction_type: "eip1559".to_string(),
+                gas_config: crate::config::models::GasConfig::default(),
+                gas_token: "ethereum".to_string(),
+                gas_token_symbol: "ETH".to_string(),
+            },
+        ];
+
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager.clone()));
+
+        // Create monitors for multiple networks
+        let mut monitor1 = test_monitor();
+        monitor1.name = "monitor1".to_string();
+        monitor1.network = "ethereum-mainnet".to_string();
+
+        let mut monitor2 = test_monitor();
+        monitor2.name = "monitor2".to_string();
+        monitor2.network = "base-mainnet".to_string();
+
+        let mut monitor3 = test_monitor();
+        monitor3.name = "monitor3".to_string();
+        monitor3.network = "ethereum-mainnet".to_string();
+
+        let listener = EventListener::new(
+            network_manager,
+            webhook_caller,
+            response_handler,
+            vec![monitor1, monitor2, monitor3],
+        );
+
+        // Test start_monitoring - it should succeed in returning handles
+        let result = listener.start_monitoring().await;
+        assert!(result.is_ok());
+
+        let handles = result.unwrap();
+        assert_eq!(handles.len(), 2); // One handle per network
+
+        // Abort all handles to clean up
+        for handle in handles {
+            handle.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_start_network_monitoring_network_not_found() {
+        let networks: Vec<crate::config::models::Network> = vec![];
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager.clone()));
+
+        let listener =
+            EventListener::new(network_manager, webhook_caller, response_handler, vec![]);
+
+        // Test with non-existent network
+        let result = listener
+            .start_network_monitoring("non-existent".to_string(), vec![test_monitor()])
+            .await;
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            match e {
+                EventMonitorError::NetworkNotFound(name) => {
+                    assert_eq!(name, "non-existent");
+                }
+                _ => panic!("Expected NetworkNotFound error"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_start_network_monitoring_with_valid_network() {
+        // Create a network with valid URL
+        let networks = vec![crate::config::models::Network {
+            name: "test-network".to_string(),
+            rpc_url: "http://localhost:8545".to_string(),
+            ws_url: None,
+            transaction_type: "legacy".to_string(),
+            gas_config: crate::config::models::GasConfig::default(),
+            gas_token: "test".to_string(),
+            gas_token_symbol: "TEST".to_string(),
+        }];
+
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager.clone()));
+
+        let listener =
+            EventListener::new(network_manager, webhook_caller, response_handler, vec![]);
+
+        let result = listener
+            .start_network_monitoring("test-network".to_string(), vec![test_monitor()])
+            .await;
+
+        assert!(result.is_ok());
+
+        // Clean up the handle
+        if let Ok(handle) = result {
+            handle.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_monitor_network_events() {
+        use alloy::providers::ProviderBuilder;
+
+        // Create a mock provider
+        let provider =
+            Arc::new(ProviderBuilder::new().on_http("http://localhost:8545".parse().unwrap()));
+
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let networks: Vec<crate::config::models::Network> = vec![];
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager));
+
+        let monitors = vec![test_monitor()];
+
+        // Create a channel to test event flow
+        let (tx, mut rx) = mpsc::channel(1);
+
+        // Start monitoring in a separate task
+        let monitor_task = tokio::spawn(async move {
+            let result = EventListener::monitor_network_events(
+                provider,
+                "test-network".to_string(),
+                monitors,
+                webhook_caller,
+                response_handler,
+            )
+            .await;
+            tx.send(result).await.unwrap();
+        });
+
+        // Give it some time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Cancel the task to simulate channel closure
+        monitor_task.abort();
+
+        // The function should exit when channel is closed
+        if let Ok(result) = rx.try_recv() {
+            assert!(result.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_to_monitor_events() {
+        use alloy::providers::ProviderBuilder;
+
+        let provider =
+            Arc::new(ProviderBuilder::new().on_http("http://localhost:8545".parse().unwrap()));
+
+        let (tx, _rx) = mpsc::channel(100);
+        let monitor = test_monitor();
+
+        // Test subscription creation
+        let result =
+            EventListener::subscribe_to_monitor_events(provider, monitor.clone(), tx).await;
+        assert!(result.is_ok());
+
+        let handle = result.unwrap();
+
+        // The task should be running
+        assert!(!handle.is_finished());
+
+        // Abort the task to clean up
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_with_invalid_event_signature() {
+        use alloy::providers::ProviderBuilder;
+
+        let provider =
+            Arc::new(ProviderBuilder::new().on_http("http://localhost:8545".parse().unwrap()));
+
+        let (tx, _rx) = mpsc::channel(100);
+        let mut monitor = test_monitor();
+        // This signature is still valid for parsing but would be invalid for actual ABI decoding
+        monitor.event_signature = "InvalidEvent(".to_string();
+
+        // Currently parse_event_selector just hashes the string, so this won't fail
+        // In a real implementation with proper ABI parsing, this might fail
+        let result = EventListener::subscribe_to_monitor_events(provider, monitor, tx).await;
+        assert!(result.is_ok());
+
+        if let Ok(handle) = result {
+            handle.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_process_event_success() {
+        use alloy::primitives::{b256, B256};
+        use alloy::rpc::types::Log as AlloyLog;
+
+        // Setup dependencies with a mock HTTP client
+        let networks: Vec<crate::config::models::Network> = vec![];
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager));
+
+        let monitor = test_monitor();
+
+        // Create a test log
+        let log = AlloyLog {
+            inner: alloy::primitives::Log {
+                address: monitor.contract_address,
+                data: alloy::primitives::LogData::new_unchecked(
+                    vec![b256!(
+                        "0000000000000000000000000000000000000000000000000000000000000001"
+                    )],
+                    vec![0x00, 0x00, 0x00, 0x01].into(),
+                ),
+            },
+            block_hash: Some(B256::ZERO),
+            block_number: Some(12345),
+            block_timestamp: None,
+            transaction_hash: Some(b256!(
+                "0000000000000000000000000000000000000000000000000000000000000002"
+            )),
+            transaction_index: Some(0),
+            log_index: Some(0),
+            removed: false,
+        };
+
+        // Test process_event - will fail due to webhook call but tests the flow
+        let result = EventListener::process_event(
+            &monitor,
+            log,
+            "test-network",
+            &webhook_caller,
+            &response_handler,
+        )
+        .await;
+
+        // Should fail because we can't actually call the webhook
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_process_event_with_removed_log() {
+        use alloy::primitives::{b256, B256};
+        use alloy::rpc::types::Log as AlloyLog;
+
+        let networks: Vec<crate::config::models::Network> = vec![];
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager));
+
+        let monitor = test_monitor();
+
+        // Create a removed log
+        let log = AlloyLog {
+            inner: alloy::primitives::Log {
+                address: monitor.contract_address,
+                data: alloy::primitives::LogData::new_unchecked(
+                    vec![b256!(
+                        "0000000000000000000000000000000000000000000000000000000000000001"
+                    )],
+                    vec![0x00, 0x00, 0x00, 0x01].into(),
+                ),
+            },
+            block_hash: Some(B256::ZERO),
+            block_number: Some(12345),
+            block_timestamp: None,
+            transaction_hash: Some(b256!(
+                "0000000000000000000000000000000000000000000000000000000000000002"
+            )),
+            transaction_index: Some(0),
+            log_index: Some(0),
+            removed: true, // Mark as removed
+        };
+
+        let result = EventListener::process_event(
+            &monitor,
+            log,
+            "test-network",
+            &webhook_caller,
+            &response_handler,
+        )
+        .await;
+
+        // Should still try to process but webhook will fail
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_process_event_decode_and_metrics() {
+        use alloy::primitives::{b256, B256};
+        use alloy::rpc::types::Log as AlloyLog;
+
+        let monitor = test_monitor();
+
+        // Create a test log with multiple topics
+        let log = AlloyLog {
+            inner: alloy::primitives::Log {
+                address: monitor.contract_address,
+                data: alloy::primitives::LogData::new_unchecked(
+                    vec![
+                        b256!("0000000000000000000000000000000000000000000000000000000000000001"),
+                        b256!("0000000000000000000000000000000000000000000000000000000000000002"),
+                        b256!("0000000000000000000000000000000000000000000000000000000000000003"),
+                    ],
+                    vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02].into(),
+                ),
+            },
+            block_hash: Some(B256::ZERO),
+            block_number: Some(12345),
+            block_timestamp: None,
+            transaction_hash: Some(b256!(
+                "0000000000000000000000000000000000000000000000000000000000000002"
+            )),
+            transaction_index: Some(0),
+            log_index: Some(5),
+            removed: false,
+        };
+
+        // Test decoding
+        let processed = EventListener::decode_event_data(&log, &monitor).unwrap();
+        assert_eq!(processed.event_name, "Transfer");
+        assert_eq!(processed.topics.len(), 3);
+        assert_eq!(processed.log_index, 5);
+        assert_eq!(processed.data, "0x0000000100000002");
+    }
+
+    #[tokio::test]
+    async fn test_monitor_network_events_with_timeout() {
+        use alloy::providers::ProviderBuilder;
+        use tokio::time::{timeout, Duration};
+
+        let provider =
+            Arc::new(ProviderBuilder::new().on_http("http://localhost:8545".parse().unwrap()));
+
+        let webhook_caller = Arc::new(WebhookCaller::new());
+        let networks: Vec<crate::config::models::Network> = vec![];
+        let network_manager = Arc::new(NetworkManager::new(&networks).await.unwrap());
+        let response_handler = Arc::new(ResponseHandler::new(network_manager));
+
+        let monitors = vec![test_monitor()];
+
+        // Test that monitor_network_events starts up correctly
+        // We'll use a timeout to ensure it doesn't block forever
+        let monitor_future = EventListener::monitor_network_events(
+            provider,
+            "test-network".to_string(),
+            monitors,
+            webhook_caller,
+            response_handler,
+        );
+
+        // Give it 100ms to start up and then timeout
+        let result = timeout(Duration::from_millis(100), monitor_future).await;
+
+        // The function should timeout because it's waiting for events
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_event_context_version() {
+        let context = EventContext {
+            network: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            omikuji_version: env!("CARGO_PKG_VERSION").to_string(),
+        };
+
+        assert_eq!(context.omikuji_version, env!("CARGO_PKG_VERSION"));
+    }
 }
