@@ -48,6 +48,9 @@ pub struct NetworkManager {
 
     /// Wallet addresses for each network
     wallet_addresses: HashMap<String, Address>,
+
+    /// Network configurations
+    networks: HashMap<String, Network>,
 }
 
 impl NetworkManager {
@@ -57,6 +60,7 @@ impl NetworkManager {
         let private_keys = HashMap::new();
         let mut rpc_urls = HashMap::new();
         let wallet_addresses = HashMap::new();
+        let mut network_configs = HashMap::new();
 
         for network in networks {
             let provider = Self::create_provider(&network.rpc_url)
@@ -67,6 +71,7 @@ impl NetworkManager {
 
             providers.insert(network.name.clone(), Arc::new(provider));
             rpc_urls.insert(network.name.clone(), network.rpc_url.clone());
+            network_configs.insert(network.name.clone(), network.clone());
         }
 
         Ok(Self {
@@ -74,6 +79,7 @@ impl NetworkManager {
             private_keys,
             rpc_urls,
             wallet_addresses,
+            networks: network_configs,
         })
     }
 
@@ -285,6 +291,13 @@ impl NetworkManager {
                     network_name
                 )
             })
+    }
+
+    /// Get network configuration
+    pub async fn get_network(&self, network_name: &str) -> Result<&Network> {
+        self.networks
+            .get(network_name)
+            .ok_or_else(|| NetworkError::NetworkNotFound(network_name.to_string()).into())
     }
 
     /// Create a provider from an RPC URL

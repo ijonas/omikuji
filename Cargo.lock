@@ -3473,6 +3473,7 @@ dependencies = [
  "cron",
  "dirs",
  "dotenv",
+ "futures",
  "hex",
  "hyper 1.6.0",
  "jsonpath-rust",

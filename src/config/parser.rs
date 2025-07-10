@@ -75,6 +75,33 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<OmikujiConfig, Conf
         })?;
     }
 
+    // Check if networks referenced by event monitors exist
+    for monitor in &config.event_monitors {
+        if !config.networks.iter().any(|n| n.name == monitor.network) {
+            return Err(ConfigError::Other(format!(
+                "Event monitor '{}' references network '{}' which is not defined",
+                monitor.name, monitor.network
+            )));
+        }
+
+        // Validate the event monitor
+        monitor.validate().map_err(|e| {
+            ConfigError::Other(format!(
+                "Event monitor '{}' validation failed: {}",
+                monitor.name, e
+            ))
+        })?;
+    }
+
+    // Parse and validate event monitors with environment variable substitution
+    let parsed_monitors =
+        crate::event_monitors::config::parse_event_monitors(config.event_monitors.clone())
+            .map_err(|e| ConfigError::Other(format!("Event monitor parsing failed: {e}")))?;
+
+    // Create a new config with parsed event monitors
+    let mut config = config;
+    config.event_monitors = parsed_monitors;
+
     Ok(config)
 }
 

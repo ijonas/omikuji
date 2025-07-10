@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 
 use super::metrics_config::MetricsConfig;
+use crate::event_monitors::models::EventMonitor;
 use crate::gas_price::models::GasPriceFeedConfig;
 use crate::scheduled_tasks::models::ScheduledTask;
 
@@ -38,6 +39,10 @@ pub struct OmikujiConfig {
     /// Scheduled tasks configuration
     #[serde(default)]
     pub scheduled_tasks: Vec<ScheduledTask>,
+
+    /// Event monitors configuration
+    #[serde(default)]
+    pub event_monitors: Vec<EventMonitor>,
 }
 
 /// Configuration for database cleanup task
@@ -230,6 +235,11 @@ pub struct Network {
     #[validate(url)]
     pub rpc_url: String,
 
+    /// WebSocket URL for the network (optional, defaults to RPC URL)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(url)]
+    pub ws_url: Option<String>,
+
     /// Transaction type to use ("legacy" or "eip1559")
     #[serde(default = "default_transaction_type")]
     #[validate(custom = "validate_transaction_type")]
@@ -254,6 +264,7 @@ impl Default for Network {
         Self {
             name: "localhost".to_string(),
             rpc_url: "http://localhost:8545".to_string(),
+            ws_url: None,
             transaction_type: default_transaction_type(),
             gas_config: GasConfig::default(),
             gas_token: default_gas_token(),
