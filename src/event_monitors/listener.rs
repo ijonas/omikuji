@@ -67,11 +67,28 @@ impl EventListener {
         let mut handles = Vec::new();
         let metrics = EventMonitorMetrics::global();
 
+        info!(
+            "Starting event monitoring for {} total monitors",
+            self.monitors.len()
+        );
+
         // Group monitors by network for efficiency
         let monitors_by_network = self.group_monitors_by_network();
 
         for (network_name, network_monitors) in monitors_by_network {
             let monitor_count = network_monitors.len() as i64;
+            info!(
+                "Starting {} event monitors on network '{}'",
+                monitor_count, network_name
+            );
+            
+            for monitor in &network_monitors {
+                debug!(
+                    "  - Monitor '{}': contract={}, event='{}'",
+                    monitor.name, monitor.contract_address, monitor.event_signature
+                );
+            }
+            
             metrics.update_active_subscriptions(&network_name, monitor_count);
 
             let handle = self
@@ -81,8 +98,8 @@ impl EventListener {
         }
 
         info!(
-            "Started event monitoring for {} monitors",
-            self.monitors.len()
+            "Started event monitoring with {} active subscriptions",
+            handles.len()
         );
         Ok(handles)
     }
@@ -189,7 +206,7 @@ impl EventListener {
     async fn subscribe_to_monitor_events(
         provider: Arc<crate::network::EthProvider>,
         monitor: EventMonitor,
-        _tx: mpsc::Sender<(EventMonitor, Log)>,
+        tx: mpsc::Sender<(EventMonitor, Log)>,
     ) -> Result<JoinHandle<()>> {
         // Parse event signature to get event selector
         let _event_selector =
@@ -218,16 +235,67 @@ impl EventListener {
                 match provider.get_block_number().await {
                     Ok(current_block) => {
                         if current_block > last_block {
-                            // For Phase 1, just log that we would check for events
                             debug!(
-                                "Would check for events from block {} to {} for monitor '{}'",
+                                "Checking for events from block {} to {} for monitor '{}'",
                                 last_block + 1,
                                 current_block,
                                 monitor.name
                             );
-                            last_block = current_block;
 
-                            // TODO: Implement actual event fetching with get_logs
+                            // Parse event selector from signature
+                            let event_selector = match Self::parse_event_selector(&monitor.event_signature) {
+                                Ok(selector) => selector,
+                                Err(e) => {
+                                    error!("Failed to parse event signature '{}': {}", monitor.event_signature, e);
+                                    EventMonitorMetrics::global()
+                                        .record_processing_error(&monitor.name, "event_signature_parse");
+                                    continue;
+                                }
+                            };
+
+                            // Create filter for the specific contract and event
+                            let filter = alloy::rpc::types::Filter::new()
+                                .address(monitor.contract_address)
+                                .event_signature(event_selector)
+                                .from_block(last_block + 1)
+                                .to_block(current_block);
+
+                            // Fetch logs
+                            match provider.get_logs(&filter).await {
+                                Ok(logs) => {
+                                    if !logs.is_empty() {
+                                        info!(
+                                            "Found {} events for monitor '{}' between blocks {} and {}",
+                                            logs.len(),
+                                            monitor.name,
+                                            last_block + 1,
+                                            current_block
+                                        );
+                                    }
+
+                                    for log in logs {
+                                        debug!(
+                                            "Processing event for monitor '{}' in tx: {:?}",
+                                            monitor.name,
+                                            log.transaction_hash
+                                        );
+
+                                        // Send the log through the channel for processing
+                                        if let Err(e) = tx.send((monitor.clone(), log)).await {
+                                            error!("Failed to send event to processing channel: {}", e);
+                                            EventMonitorMetrics::global()
+                                                .record_processing_error(&monitor.name, "channel_send");
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to fetch logs for monitor '{}': {}", monitor.name, e);
+                                    EventMonitorMetrics::global()
+                                        .record_processing_error(&monitor.name, "log_fetch");
+                                }
+                            }
+
+                            last_block = current_block;
                         }
                     }
                     Err(e) => {
@@ -246,10 +314,55 @@ impl EventListener {
     fn parse_event_selector(
         signature: &str,
     ) -> std::result::Result<alloy::primitives::B256, String> {
-        // For now, we'll use a simple keccak hash of the signature
-        // In a real implementation, we'd parse the signature more carefully
         use alloy::primitives::keccak256;
-        Ok(keccak256(signature.as_bytes()))
+        
+        // Event signatures should be in the format: "EventName(type1 name1,type2 name2,...)"
+        // For the selector, we need only "EventName(type1,type2,...)" without parameter names
+        
+        // Extract event name and parameters
+        let event_name = signature
+            .split('(')
+            .next()
+            .ok_or_else(|| format!("Invalid event signature: '{}'", signature))?
+            .trim();
+            
+        // Extract parameters part
+        let params_start = signature.find('(').ok_or_else(|| format!("Missing '(' in signature: '{}'", signature))?;
+        let params_end = signature.rfind(')').ok_or_else(|| format!("Missing ')' in signature: '{}'", signature))?;
+        
+        if params_start >= params_end {
+            return Err(format!("Invalid parentheses in signature: '{}'", signature));
+        }
+        
+        let params_str = &signature[params_start + 1..params_end];
+        
+        // Parse parameters and extract only types (remove parameter names)
+        let types_only: Vec<String> = if params_str.trim().is_empty() {
+            vec![]
+        } else {
+            params_str
+                .split(',')
+                .map(|param| {
+                    // Each param can be "type" or "type name" - we want only the type
+                    param.trim().split_whitespace().next().unwrap_or("").to_string()
+                })
+                .collect()
+        };
+        
+        // Reconstruct the canonical signature for hashing
+        let canonical_signature = format!("{}({})", event_name, types_only.join(","));
+        
+        debug!(
+            "Parsing event signature: '{}' -> canonical: '{}'", 
+            signature, canonical_signature
+        );
+        
+        // Calculate the event selector (topic0) by hashing the canonical signature
+        let selector = keccak256(canonical_signature.as_bytes());
+        
+        debug!("Event selector for '{}': {:?}", canonical_signature, selector);
+        
+        Ok(selector)
     }
 
     /// Process a single event
@@ -300,7 +413,7 @@ impl EventListener {
 
     /// Decode event data from a log entry
     fn decode_event_data(log: &Log, monitor: &EventMonitor) -> Result<ProcessedEvent> {
-        // Extract basic event data
+        // Extract event name and parse signature
         let event_name = monitor
             .event_signature
             .split('(')
@@ -317,13 +430,39 @@ impl EventListener {
 
         let data = format!("0x{}", hex::encode(&log.data().data));
 
-        // TODO: In Phase 2, implement proper ABI decoding
-        // For now, we'll create a placeholder decoded args object
-        let decoded_args = serde_json::json!({
-            "_notice": "ABI decoding will be implemented in Phase 2",
-            "raw_topics": &topics,
-            "raw_data": &data,
-        });
+        // Parse event signature to extract parameter types
+        let decoded_args = if let Some(params_start) = monitor.event_signature.find('(') {
+            if let Some(params_end) = monitor.event_signature.rfind(')') {
+                let params_str = &monitor.event_signature[params_start + 1..params_end];
+                let param_types: Vec<&str> = if params_str.is_empty() {
+                    vec![]
+                } else {
+                    params_str.split(',').map(|s| s.trim()).collect()
+                };
+                
+                debug!(
+                    "Decoding event '{}' with {} parameters: {:?}",
+                    event_name,
+                    param_types.len(),
+                    param_types
+                );
+                
+                // Decode the event parameters
+                Self::decode_event_parameters(&topics, &log.data().data, &param_types, &event_name)?
+            } else {
+                serde_json::json!({
+                    "error": "Invalid event signature format",
+                    "raw_topics": &topics,
+                    "raw_data": &data,
+                })
+            }
+        } else {
+            serde_json::json!({
+                "error": "Invalid event signature format",
+                "raw_topics": &topics,
+                "raw_data": &data,
+            })
+        };
 
         Ok(ProcessedEvent {
             monitor_name: monitor.name.clone(),
@@ -337,6 +476,108 @@ impl EventListener {
             data,
             decoded_args,
         })
+    }
+    
+    /// Decode event parameters from topics and data
+    fn decode_event_parameters(
+        topics: &[String],
+        data: &[u8],
+        param_types: &[&str],
+        event_name: &str,
+    ) -> Result<serde_json::Value> {
+        use alloy::primitives::{I256, U256};
+        
+        let mut decoded = serde_json::Map::new();
+        let mut topic_index = 1; // Skip topic0 (event selector)
+        let mut data_offset = 0;
+        
+        // Parse parameter names and types
+        let params_with_names: Vec<(String, &str)> = param_types
+            .iter()
+            .enumerate()
+            .map(|(i, param)| {
+                // Split "type name" or just "type"
+                let parts: Vec<&str> = param.split_whitespace().collect();
+                match parts.len() {
+                    1 => (format!("param{}", i), parts[0]),
+                    2 => (parts[1].to_string(), parts[0]),
+                    _ => (format!("param{}", i), *param),
+                }
+            })
+            .collect();
+        
+        for (param_name, param_type) in params_with_names {
+            // Indexed parameters go in topics, non-indexed in data
+            // For now, assume primitive types in topics, complex types in data
+            let is_indexed = topic_index < topics.len() && 
+                (param_type == "address" || param_type.starts_with("uint") || 
+                 param_type.starts_with("int") || param_type == "bool");
+            
+            let value = if is_indexed {
+                // Decode from topic
+                let topic = &topics[topic_index];
+                topic_index += 1;
+                
+                match param_type {
+                    "address" => {
+                        // Address is the last 20 bytes of the 32-byte topic
+                        let addr = &topic[topic.len() - 40..]; // Last 40 hex chars = 20 bytes
+                        serde_json::json!(format!("0x{}", addr))
+                    }
+                    t if t.starts_with("uint") => {
+                        // Parse as U256
+                        if let Ok(val) = U256::from_str_radix(&topic[2..], 16) {
+                            serde_json::json!(val.to_string())
+                        } else {
+                            serde_json::json!(topic)
+                        }
+                    }
+                    t if t.starts_with("int") => {
+                        // Parse as I256
+                        if topic.len() >= 66 { // "0x" + 64 hex chars
+                            let bytes_str = &topic[2..];
+                            if let Ok(bytes) = hex::decode(bytes_str) {
+                                if bytes.len() == 32 {
+                                    let bytes_array: [u8; 32] = bytes.try_into().unwrap();
+                                    let i256 = I256::from_be_bytes(bytes_array);
+                                    serde_json::json!(i256.to_string())
+                                } else {
+                                    serde_json::json!(topic)
+                                }
+                            } else {
+                                serde_json::json!(topic)
+                            }
+                        } else {
+                            serde_json::json!(topic)
+                        }
+                    }
+                    "bool" => {
+                        let val = topic.ends_with("1");
+                        serde_json::json!(val)
+                    }
+                    _ => serde_json::json!(topic),
+                }
+            } else {
+                // Decode from data - for now just show hex
+                // In a full implementation, we'd properly decode based on type
+                if data_offset < data.len() {
+                    let chunk_size = 32; // Most types are 32 bytes
+                    let end = (data_offset + chunk_size).min(data.len());
+                    let chunk = &data[data_offset..end];
+                    data_offset = end;
+                    serde_json::json!(format!("0x{}", hex::encode(chunk)))
+                } else {
+                    serde_json::json!(null)
+                }
+            };
+            
+            decoded.insert(param_name, value);
+        }
+        
+        // Add metadata
+        decoded.insert("_event".to_string(), serde_json::json!(event_name));
+        
+        Ok(serde_json::Value::Object(decoded))
     }
 }
 
